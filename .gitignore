@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Environment Variables
+.env
+.env.local
+
+# Build Outputs
+dist/
+build/
+
+# Logs
+logs/
+*.log
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# IDE Files
+.vscode/
+.idea/
+
+# Prisma Generated Files
+prisma/migrations/
+
+# Coverage Reports
+coverage/
