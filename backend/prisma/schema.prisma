@@ -1,0 +1,212 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum VehicleType {
+  CAR
+  BIKE
+  EV
+}
+
+enum SlotType {
+  CAR
+  BIKE
+  EV
+  DISABLED
+}
+
+enum SlotStatus {
+  AVAILABLE
+  TEMP_RESERVED
+  RESERVED
+  OCCUPIED
+  MAINTENANCE
+}
+
+enum BookingStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+
+model User {
+  id         String   @id @default(uuid())
+  name       String
+  email      String   @unique
+  password   String
+  phone      String
+
+  role       UserRole @default(USER)
+
+  vehicles   Vehicle[]
+  bookings   Booking[]
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  deletedAt  DateTime?
+
+  @@map("users")
+}
+
+model Vehicle {
+  id             String      @id @default(uuid())
+
+  userId         String
+  user           User        @relation(fields: [userId], references: [id])
+
+  vehicleNumber  String      @unique
+  vehicleType    VehicleType
+
+  bookings       Booking[]
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  @@index([userId])
+
+  @@map("vehicles")
+}
+
+model ParkingLot {
+  id            String   @id @default(uuid())
+
+  name          String
+  description   String?
+
+  address       String
+  city          String
+  state         String
+
+  latitude      Float
+  longitude     Float
+
+  pricePerHour  Decimal
+  totalSlots    Int
+
+  isActive      Boolean  @default(true)
+
+  slots         ParkingSlot[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
+
+  @@map("parking_lots")
+}
+
+model ParkingSlot {
+  id            String      @id @default(uuid())
+
+  lotId         String
+  lot           ParkingLot  @relation(fields: [lotId], references: [id])
+
+  floorNumber   Int         @default(1)
+
+  slotNumber    String
+
+  slotType      SlotType
+
+  status        SlotStatus  @default(AVAILABLE)
+
+  bookings      Booking[]
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  deletedAt     DateTime?
+
+  @@unique([lotId, floorNumber, slotNumber])
+
+  @@index([lotId])
+
+  @@map("parking_slots")
+}
+
+model Booking {
+  id               String         @id @default(uuid())
+
+  userId           String
+  user             User           @relation(fields: [userId], references: [id])
+
+  vehicleId        String
+  vehicle          Vehicle        @relation(fields: [vehicleId], references: [id])
+
+  slotId           String
+  slot             ParkingSlot    @relation(fields: [slotId], references: [id])
+
+  startTime        DateTime
+  endTime          DateTime
+
+  totalAmount      Decimal
+
+  bookingStatus    BookingStatus @default(PENDING_PAYMENT)
+
+  expiresAt        DateTime?
+
+  qrCode           String?
+  qrExpiresAt      DateTime?
+
+  entryTime        DateTime?
+  exitTime         DateTime?
+
+  payment          Payment?
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId])
+  @@index([vehicleId])
+  @@index([slotId])
+
+  @@map("bookings")
+}
+
+model Payment {
+  id                 String         @id @default(uuid())
+
+  bookingId          String         @unique
+  booking            Booking        @relation(fields: [bookingId], references: [id])
+
+  razorpayOrderId    String?
+  razorpayPaymentId  String?
+
+  amount             Decimal
+
+  currency           String         @default("INR")
+
+  paymentMethod      String?
+
+  paymentStatus      PaymentStatus  @default(PENDING)
+
+  failureReason      String?
+
+  refundedAt         DateTime?
+
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([bookingId])
+
+  @@map("payments")
+}
