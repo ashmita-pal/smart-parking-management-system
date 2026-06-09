@@ -1,4 +1,6 @@
 import express from "express";
+import errorHandler from "./middleware/error.middleware.js";
+import testRouter from "./routes/test.routes.js";
 
 const app = express();
 
@@ -14,4 +16,7 @@ app.get("/health", (req, res) => {
   });
 });
 
+app.use("/api/v1/test", testRouter);
+
+app.use(errorHandler);
 export default app;
