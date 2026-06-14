@@ -27,4 +27,27 @@ const registerUser = async ({ name, email, password, phone }) => {
   return user;
 };
 
-export { registerUser };
+const loginUser = async ({ email, password }) => {
+  const user = await prisma.user.findUnique({
+    where: {
+      email,
+    },
+  });
+
+  if (!user) {
+    throw new ApiError(401, "Invalid email or password");
+  }
+
+  const isPasswordCorrect = await bcrypt.compare(
+    password,
+    user.password,
+  );
+
+  if (!isPasswordCorrect) {
+    throw new ApiError(401, "Invalid email or password");
+  }
+
+  return user;
+};
+
+export { registerUser, loginUser };
