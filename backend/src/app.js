@@ -3,8 +3,7 @@ import errorHandler from "./middleware/error.middleware.js";
 import testRouter from "./routes/test.routes.js";
 import authRouter from "./routes/auth.routes.js";
 import cookieParser from "cookie-parser";
-
-
+import parkingLotRoutes from "./routes/parking-lot.routes.js";
 
 const app = express();
 
@@ -25,5 +24,6 @@ app.get("/health", (req, res) => {
 
 app.use("/api/v1/test", testRouter);
 app.use("/api/v1/auth", authRouter);
+app.use("/api/v1/parking-lots", parkingLotRoutes);
 app.use(errorHandler);
 export default app;

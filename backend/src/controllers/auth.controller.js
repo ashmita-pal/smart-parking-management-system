@@ -56,7 +56,6 @@ const loginController = asyncHandler(async (req, res) => {
     phone: user.phone,
     role: user.role,
     isEmailVerified: user.isEmailVerified,
-    accessToken,
   };
 
   const accessToken= generateAccessToken(user);
@@ -76,4 +75,20 @@ const getCurrentUser = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, req.user, "Current user fetched successfully"));
 });
 
-export { registerController, loginController , getCurrentUser};
+const logoutController = asyncHandler(async (req, res) => {
+  return res
+    .status(200)
+    .clearCookie(
+      "accessToken",
+      cookieOptions,
+    )
+    .json(
+      new ApiResponse(
+        200,
+        {},
+        "Logout successful",
+      ),
+    );
+});
+
+export { registerController, loginController , getCurrentUser, logoutController};
