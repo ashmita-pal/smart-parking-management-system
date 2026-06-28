@@ -5,6 +5,7 @@ import authRouter from "./routes/auth.routes.js";
 import cookieParser from "cookie-parser";
 import parkingLotRoutes from "./routes/parking-lot.routes.js";
 import parkingSlotRoutes from "./routes/parking-slot.routes.js";
+import vehicleRoutes from "./routes/vehicle.routes.js";
 
 const app = express();
 
@@ -27,5 +28,6 @@ app.use("/api/v1/test", testRouter);
 app.use("/api/v1/auth", authRouter);
 app.use("/api/v1/parking-lots", parkingLotRoutes);
 app.use("/api/v1/parking-slots", parkingSlotRoutes);
+app.use("/api/v1/vehicle",vehicleRoutes);
 app.use(errorHandler);
 export default app;
