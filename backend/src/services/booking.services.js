@@ -161,5 +161,210 @@ const createBooking = async (userId, { slotId, vehicleId, durationHours }) => {
   return booking;
 };
 
+const getMyBookings = async (userId) => {
+  const bookings = await prisma.booking.findMany({
+    where: {
+      userId,
+    },
 
-export { createBooking };
+    orderBy: {
+      createdAt: "desc",
+    },
+
+    include: {
+      vehicle: {
+        select: {
+          id: true,
+          vehicleNumber: true,
+          vehicleType: true,
+        },
+      },
+
+      slot: {
+        select: {
+          id: true,
+          slotNumber: true,
+          floorNumber: true,
+          slotType: true,
+          status: true,
+        },
+      },
+
+      lot: {
+        select: {
+          id: true,
+          name: true,
+          city: true,
+          address: true,
+        },
+      },
+    },
+  });
+
+  return bookings;
+};
+
+const getBookingById = async (userId, bookingId)=>{
+  const booking = await prisma.booking.findFirst({
+  where: {
+    id: bookingId,
+    userId,
+  },
+
+  include: {
+    vehicle: {
+      select: {
+        id: true,
+        vehicleNumber: true,
+        vehicleType: true,
+      },
+    },
+
+    slot: {
+      select: {
+        id: true,
+        slotNumber: true,
+        floorNumber: true,
+        slotType: true,
+        status: true,
+      },
+    },
+
+    lot: {
+      select: {
+        id: true,
+        name: true,
+        city: true,
+        address: true,
+      },
+    },
+
+    payment: {
+      select: {
+        paymentStatus: true,
+        amount: true,
+        currency: true,
+      },
+    },
+  },
+});
+
+if (!booking) {
+  throw new ApiError(
+    404,
+    "Booking not found",
+  );
+}
+
+return booking;
+}
+
+const cancelBooking = async (
+  userId,
+  bookingId,
+) => {
+
+  const booking = await prisma.booking.findFirst({
+    where: {
+      id: bookingId,
+      userId,
+    },
+
+    select: {
+      id: true,
+      slotId: true,
+      bookingStatus: true,
+    },
+  });
+
+  if (!booking) {
+    throw new ApiError(
+      404,
+      "Booking not found",
+    );
+  }
+
+
+  if (booking.bookingStatus === "CANCELLED") {
+    throw new ApiError(
+      409,
+      "Booking is already cancelled",
+    );
+  }
+
+  if (booking.bookingStatus === "COMPLETED") {
+    throw new ApiError(
+      409,
+      "Completed bookings cannot be cancelled",
+    );
+  }
+
+  if (booking.bookingStatus === "EXPIRED") {
+    throw new ApiError(
+      409,
+      "Expired bookings cannot be cancelled",
+    );
+  }
+
+  if (booking.bookingStatus === "ACTIVE") {
+    throw new ApiError(
+      409,
+      "Active bookings cannot be cancelled",
+    );
+  }
+
+
+  const cancelledBooking = await prisma.$transaction(
+    async (tx) => {
+      const updatedBooking =
+        await tx.booking.update({
+          where: {
+            id: bookingId,
+          },
+
+          data: {
+            bookingStatus: "CANCELLED",
+          },
+
+          include: {
+            vehicle: {
+              select: {
+                vehicleNumber: true,
+                vehicleType: true,
+              },
+            },
+
+            slot: {
+              select: {
+                slotNumber: true,
+                floorNumber: true,
+              },
+            },
+
+            lot: {
+              select: {
+                name: true,
+                city: true,
+              },
+            },
+          },
+        });
+
+      await tx.parkingSlot.update({
+        where: {
+          id: booking.slotId,
+        },
+
+        data: {
+          status: SLOT_STATUS.AVAILABLE,
+        },
+      });
+
+      return updatedBooking;
+    },
+  );
+
+  return cancelledBooking;
+};
+
+export { createBooking, getMyBookings, getBookingById, cancelBooking};

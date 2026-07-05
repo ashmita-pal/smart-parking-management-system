@@ -3,7 +3,7 @@ import { ApiError } from "../utils/api-error.js";
 import { ApiResponse } from "../utils/api-response.js";
 
 import {
-  createBooking,
+  createBooking, getMyBookings, getBookingById, cancelBooking
 } from "../services/booking.services.js";
 
 const createBookingController = asyncHandler(async (req, res) => {
@@ -46,6 +46,50 @@ const createBookingController = asyncHandler(async (req, res) => {
   );
 });
 
+const getMyBookingsController = asyncHandler(async (req, res) => {
+  const bookings = await getMyBookings(req.user.id);
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      bookings,
+      "Bookings fetched successfully",
+    ),
+  );
+});
+
+const getBookingByIdController = asyncHandler(async(req, res)=>{
+  const userId =req.user.id;
+  const {bookingId} = req.params;
+
+  const booking= await getBookingById(userId,bookingId);
+
+  return res.status(200).json(
+    new ApiResponse(200, booking, "Booking details fetched successfully")
+  );
+});
+
+const cancelBookingController = asyncHandler(async (req, res) => {
+  const { bookingId } = req.params;
+
+  if (!bookingId?.trim()) {
+    throw new ApiError(400, "Booking ID is required");
+  }
+
+  const booking = await cancelBooking(
+    req.user.id,
+    bookingId,
+  );
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      booking,
+      "Booking cancelled successfully",
+    ),
+  );
+});
+
 export {
-  createBookingController,
+  createBookingController, getMyBookingsController, getBookingByIdController, cancelBookingController
 };
