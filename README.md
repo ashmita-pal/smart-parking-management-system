@@ -6,6 +6,8 @@ The project is being developed with a scalable backend architecture using Node.j
 
 ## ✨ Features
 
+
+
 ### ✅ Implemented
 
 - User Registration & Login
@@ -14,22 +16,28 @@ The project is being developed with a scalable backend architecture using Node.j
 - Parking Lot CRUD Operations
 - Parking Slot CRUD Operations
 - Vehicle Management
+- Booking Management
 - Ownership-Based Authorization
+- Transaction-Based Booking Processing
+- Race Condition Protection
 - Soft Delete Support
 
 ### 🚧 In Progress
 
-- Booking Management
+- Payment Integration (Razorpay)
 
 ### 📌 Planned
 
-- Online Slot Booking
-- Razorpay Payment Gateway
+### 📌 Planned
+
+- Razorpay Payment Integration
+- Automatic Booking Expiry (Cron Jobs)
+- QR Code Generation
 - QR Code Based Entry & Exit
+- Booking History & Analytics
 - Google Maps Integration
-- Booking History
-- Admin Dashboard
 - Real-Time Slot Availability
+- Admin Dashboard
 
 ## 🛠 Tech Stack
 
@@ -105,7 +113,12 @@ The project is being developed with a scalable backend architecture using Node.j
 
 ### Bookings
 
-- Coming Soon
+- Create Booking
+- Get My Bookings
+- Get Booking by ID
+- Cancel Booking
+- Transaction-Based Booking Creation
+- Race Condition Protection
 
 ## 🚧 Project Status
 
@@ -120,6 +133,7 @@ The backend is being developed module-by-module following production-grade archi
 - Parking Lot Management
 - Parking Slot Management
 - Vehicle Management
+- Booking Management (Core)
 
 ### 🔄 Currently Working On
 
@@ -128,6 +142,8 @@ The backend is being developed module-by-module following production-grade archi
 ### 📌 Upcoming Modules
 
 - Payment Integration (Razorpay)
+- Automatic Booking Expiry
+- QR Code Generation
 - QR Code Entry & Exit
 - Google Maps Integration
 - Real-time Slot Availability
@@ -140,7 +156,7 @@ The backend is being developed module-by-module following production-grade archi
 - [x] Parking Lot Management
 - [x] Parking Slot Management
 - [x] Vehicle Management
-- [ ] Booking Management
+- [x] Booking Management
 - [ ] Payment Integration
 - [ ] QR Code Entry & Exit
 - [ ] Google Maps Integration
