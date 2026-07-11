@@ -125,21 +125,37 @@ model Booking {
 }
 
 model Payment {
-  id                String        @id @default(uuid())
-  bookingId         String        @unique
-  razorpayOrderId   String?
+
+  id String @id @default(uuid())
+
+  bookingId String @unique
+
+  razorpayOrderId String?
+
   razorpayPaymentId String?
-  amount            Decimal
-  currency          String        @default("INR")
-  paymentMethod     String?
-  paymentStatus     PaymentStatus @default(PENDING)
-  failureReason     String?
-  refundedAt        DateTime?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  booking           Booking       @relation(fields: [bookingId], references: [id])
+
+  razorpaySignature String?   // NEW
+
+  amount Decimal
+
+  currency String @default("INR")
+
+  paymentMethod PaymentMethod?
+
+  paymentStatus PaymentStatus @default(PENDING)
+
+  failureReason String?
+
+  refundedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  booking Booking @relation(fields:[bookingId],references:[id])
 
   @@index([bookingId])
+
   @@map("payments")
 }
 
@@ -183,4 +199,11 @@ enum PaymentStatus {
   SUCCESS
   FAILED
   REFUNDED
+}
+
+enum PaymentMethod {
+  CARD
+  UPI
+  NET_BANKING
+  WALLET
 }
