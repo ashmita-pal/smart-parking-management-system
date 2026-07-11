@@ -21,6 +21,10 @@ The project is being developed with a scalable backend architecture using Node.j
 - Transaction-Based Booking Processing
 - Race Condition Protection
 - Soft Delete Support
+- Razorpay Payment Order Creation
+- Payment Verification
+- QR Code Generation
+- Automatic Booking Expiry
 
 ### 🚧 In Progress
 
@@ -120,6 +124,12 @@ The project is being developed with a scalable backend architecture using Node.j
 - Transaction-Based Booking Creation
 - Race Condition Protection
 
+### Payments
+
+- Create Razorpay Order
+- Verify Razorpay Payment
+- Generate Booking QR Code
+
 ## 🚧 Project Status
 
 **Current Phase:** Backend Development (Phase 1)
@@ -134,19 +144,19 @@ The backend is being developed module-by-module following production-grade archi
 - Parking Slot Management
 - Vehicle Management
 - Booking Management (Core)
+- Payment Integration
+- Automatic Booking Expiry
 
 ### 🔄 Currently Working On
 
-- Booking Management
+- QR Check-In & Check-Out
 
 ### 📌 Upcoming Modules
 
-- Payment Integration (Razorpay)
-- Automatic Booking Expiry
-- QR Code Generation
-- QR Code Entry & Exit
+- QR Check-In
+- QR Check-Out
 - Google Maps Integration
-- Real-time Slot Availability
+- Real-Time Slot Availability
 - Analytics Dashboard
 - Frontend Development
 
@@ -157,7 +167,7 @@ The backend is being developed module-by-module following production-grade archi
 - [x] Parking Slot Management
 - [x] Vehicle Management
 - [x] Booking Management
-- [ ] Payment Integration
+- [x] Payment Integration
 - [ ] QR Code Entry & Exit
 - [ ] Google Maps Integration
 - [ ] Admin Dashboard
