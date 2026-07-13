@@ -17,6 +17,8 @@ const createParkingLotController =
       latitude,
       longitude,
       pricePerHour,
+      gracePeriodMinutes,
+      overstayRate,
       totalSlots,
     } = req.body;
 
@@ -28,7 +30,9 @@ const createParkingLotController =
       latitude === undefined ||
       longitude === undefined ||
       !pricePerHour ||
-      !totalSlots
+      !totalSlots ||
+      !gracePeriodMinutes ||
+      !overstayRate
     ) {
       throw new ApiError(
         400,
