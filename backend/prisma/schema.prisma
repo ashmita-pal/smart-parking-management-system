@@ -51,6 +51,8 @@ model ParkingLot {
   latitude     Float
   longitude    Float
   pricePerHour Decimal
+  gracePeriodMinutes  Int      @default(15)
+  overstayRate Decimal       @default(100)
   totalSlots   Int
   isActive     Boolean       @default(true)
   createdAt    DateTime      @default(now())
@@ -101,7 +103,7 @@ model Booking {
 
   expiresAt DateTime?
 
-  qrCode      String?
+  qrCode      String? @unique 
   qrExpiresAt DateTime?
 
   entryTime DateTime?
@@ -115,7 +117,12 @@ model Booking {
   lot     ParkingLot  @relation(fields: [lotId], references: [id])
   slot    ParkingSlot @relation(fields: [slotId], references: [id])
 
-  payment Payment?
+  payment Payment[]
+
+  @@index([bookingStatus, endTime])
+  overstayMinutes Int @default(0)
+
+  overstayAmount Decimal @default(0)
 
   @@index([userId])
   @@index([vehicleId])
@@ -128,7 +135,7 @@ model Payment {
 
   id String @id @default(uuid())
 
-  bookingId String @unique
+  bookingId String 
 
   razorpayOrderId String?
 
@@ -137,6 +144,8 @@ model Payment {
   razorpaySignature String?   // NEW
 
   amount Decimal
+
+  description String?
 
   currency String @default("INR")
 
@@ -152,7 +161,19 @@ model Payment {
 
   updatedAt DateTime @updatedAt
 
+  paidAt DateTime?
+
+  refundAmount Decimal? @default(0)
+
   booking Booking @relation(fields:[bookingId],references:[id])
+
+  paymentType PaymentType @default(BOOKING)
+
+  @@index([bookingId, paymentType])
+
+  @@index([paymentStatus])
+
+  @@index([paymentType])
 
   @@index([bookingId])
 
@@ -189,10 +210,12 @@ enum BookingStatus {
   PENDING_PAYMENT
   CONFIRMED
   ACTIVE
-  CANCELLED
+  OVERSTAY_PAYMENT_PENDING
   COMPLETED
+  CANCELLED
   EXPIRED
 }
+
 
 enum PaymentStatus {
   PENDING
@@ -206,4 +229,10 @@ enum PaymentMethod {
   UPI
   NET_BANKING
   WALLET
+}
+
+enum PaymentType {
+  BOOKING
+  OVERSTAY
+  REFUND
 }

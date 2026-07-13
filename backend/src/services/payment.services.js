@@ -1,12 +1,96 @@
 import prisma from "../config/prisma.js";
 import { ApiError } from "../utils/api-error.js";
 import { BOOKING_STATUS } from "../constants/booking.constants.js";
-import { PAYMENT_STATUS } from "../constants/payment.constants.js";
-import { SLOT_STATUS } from "../constants/parking.constants.js";
+import {
+  PAYMENT_STATUS,
+  PAYMENT_TYPE,
+} from "../constants/payment.constants.js";
 import razorpay from "../config/razorpay.js";
 import crypto from "crypto";
-import {generateBookingQRCode} from "./qrCode.services.js";
+import { generateBookingQRCode } from "./qrCode.services.js";
+import { SLOT_STATUS } from "../constants/parking.constants.js";
 
+const createRazorpayOrder = async ({
+  booking,
+  amount,
+  paymentType,
+  description,
+  userId,
+}) => {
+  let razorpayOrder;
+
+  try {
+    razorpayOrder = await razorpay.orders.create({
+      amount: Math.round(amount.toNumber() * 100),
+
+      currency: "INR",
+
+      receipt: `${booking.bookingReference}-${paymentType}`,
+
+      notes: {
+        bookingId: booking.id,
+        bookingReference: booking.bookingReference,
+        paymentType,
+        userId,
+      },
+    });
+  } catch (error) {
+    throw new ApiError(502, "Unable to create Razorpay order.");
+  }
+
+  const payment = await prisma.$transaction(async (tx) => {
+    const existingPayment = await tx.payment.findFirst({
+      where: {
+        bookingId: booking.id,
+
+        paymentType,
+
+        paymentStatus: PAYMENT_STATUS.PENDING,
+      },
+    });
+
+    // NOTE (Issue 8, undecided policy): a previously FAILED payment for this
+    // booking/paymentType is not reused here — every retry creates a fresh
+    // PENDING payment row. Only a still-PENDING row blocks a new order.
+    // Decide explicitly whether FAILED rows should instead be reused/marked
+    // stale; leaving as-is (create fresh) for now.
+    if (existingPayment) {
+      throw new ApiError(409, `${paymentType} payment already initiated.`);
+    }
+
+    return tx.payment.create({
+      data: {
+        bookingId: booking.id,
+
+        razorpayOrderId: razorpayOrder.id,
+
+        amount,
+
+        currency: razorpayOrder.currency,
+
+        paymentType,
+
+        paymentStatus: PAYMENT_STATUS.PENDING,
+
+        description,
+      },
+
+      select: {
+        id: true,
+        bookingId: true,
+        amount: true,
+        paymentType: true,
+        paymentStatus: true,
+        razorpayOrderId: true,
+      },
+    });
+  });
+
+  return {
+    payment,
+    razorpayOrder,
+  };
+};
 
 const createPaymentOrder = async (userId, bookingId) => {
   const booking = await prisma.booking.findFirst({
@@ -14,192 +98,123 @@ const createPaymentOrder = async (userId, bookingId) => {
       id: bookingId,
       userId,
     },
+
+    // Issue 2: slotId/endTime removed again — createPaymentOrder and
+    // verifyPayment are separate requests (the user leaves to complete
+    // checkout on Razorpay's side in between), so verifyPayment always
+    // needs its own fresh fetch anyway. Selecting them here just fetches
+    // columns that get discarded when this function returns.
     select: {
       id: true,
+
       bookingReference: true,
-      totalAmount: true,
+
       bookingStatus: true,
-      payment: {
-        select: {
-          id: true,
-        },
-      },
+
+      totalAmount: true,
+
+      overstayAmount: true,
     },
   });
 
   if (!booking) {
-    throw new ApiError(404, "Booking Does not Exist");
+    throw new ApiError(404, "Booking not found.");
   }
 
-  if (booking.bookingStatus !== BOOKING_STATUS.PENDING_PAYMENT) {
-    throw new ApiError(409, "Payment can only be made for pending bookings");
-  }
+  let paymentType;
+  let amount;
 
-  if (booking.payment) {
-    throw new ApiError(409, "Payment already initiated for this booking");
-  }
+  let description;
 
-  let razorpayOrder;
-
-  try {
-    razorpayOrder = await razorpay.orders.create({
-      amount: Math.round(booking.totalAmount.toNumber() * 100),
-      currency: "INR",
-      receipt: booking.bookingReference,
-      notes: {
-        bookingId: booking.id,
-        bookingReference: booking.bookingReference,
-        userId,
-      },
-    });
-  } catch (error) {
-    throw new ApiError(
-      502,
-      "Unable to create payment order. Please try again later.",
-    );
-  }
-
-  let payment;
-
-  try {
-    payment = await prisma.$transaction(async (tx) => {
-      // Re-check inside the transaction to close the race window
-      const existingPayment = await tx.payment.findUnique({
-        where: { bookingId: booking.id },
-      });
-
-      if (existingPayment) {
-        throw new ApiError(409, "Payment already initiated for this booking");
-      }
-
-      const createdPayment = await tx.payment.create({
-        data: {
-          bookingId: booking.id,
-          razorpayOrderId: razorpayOrder.id,
-          amount: booking.totalAmount,
-          currency: razorpayOrder.currency,
-          paymentStatus: PAYMENT_STATUS.PENDING,
-        },
-        select: {
-          id: true,
-          bookingId: true,
-          paymentStatus: true,
-          amount: true,
-          currency: true,
-          razorpayOrderId: true,
-          createdAt: true,
-        },
-      });
-      return createdPayment;
-    });
-  } catch (error) {
-    // Duplicate payment row slipped through despite the check — unique constraint caught it
-    if (error.code === "P2002") {
-      throw new ApiError(409, "Payment already initiated for this booking");
+  if (booking.bookingStatus === BOOKING_STATUS.PENDING_PAYMENT) {
+    paymentType = PAYMENT_TYPE.BOOKING;
+    amount = booking.totalAmount;
+    description = `Booking Payment (${booking.bookingReference})`;
+  } else if (
+    booking.bookingStatus === BOOKING_STATUS.OVERSTAY_PAYMENT_PENDING
+  ) {
+    if (booking.overstayAmount.lte(0)) {
+      throw new ApiError(400, "No overstay amount due.");
     }
-    throw error;
+
+    amount = booking.overstayAmount;
+
+    description = `Overstay Charge (${booking.bookingReference})`;
+  } else {
+    throw new ApiError(409, "No payment is currently due for this booking.");
   }
+
+  const { payment, razorpayOrder } = await createRazorpayOrder({
+    booking,
+
+    amount,
+
+    paymentType,
+
+    description,
+
+    userId,
+  });
 
   return {
-    bookingId: booking.id,
-
     paymentId: payment.id,
+
+    bookingId: booking.id,
 
     orderId: razorpayOrder.id,
 
-    amount: booking.totalAmount,
+    amount,
 
     currency: razorpayOrder.currency,
 
     bookingReference: booking.bookingReference,
 
+    paymentType,
+
     razorpayKey: process.env.RAZORPAY_KEY_ID,
   };
 };
 
-const verifyPayment = async (
-  userId,
-  bookingId,
-  { razorpay_order_id, razorpay_payment_id, razorpay_signature },
-) => {
-  // Fetch Booking + Payment
-
-  const booking = await prisma.booking.findFirst({
-    where: {
-      id: bookingId,
-      userId,
-    },
-
-    include: {
-      payment: true,
-    },
-  });
-
-  if (!booking) {
-    throw new ApiError(404, "Booking not found");
-  }
-
-  if (!booking.payment) {
-    throw new ApiError(404, "Payment record not found");
-  }
-
-  // Validate Current Status
-
-  if (booking.bookingStatus !== BOOKING_STATUS.PENDING_PAYMENT) {
-    throw new ApiError(409, "Booking is not awaiting payment");
-  }
-
-  if (booking.payment.paymentStatus !== PAYMENT_STATUS.PENDING) {
-    throw new ApiError(409, "Payment has already been verified");
-  }
-
-  // Verify Razorpay Order ID
-
-  if (booking.payment.razorpayOrderId !== razorpay_order_id) {
-    throw new ApiError(400, "Invalid Razorpay order");
-  }
-
-  // Signature Verification
-
-  const generatedSignature = crypto
-    .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-    .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-    .digest("hex");
-
-  if (generatedSignature !== razorpay_signature) {
-    throw new ApiError(400, "Payment signature verification failed");
-  }
-
-  // Generate QR
-
-  const qrCode = generateBookingQRCode(booking);
-
+const verifyBookingPayment = async ({
+  booking,
+  payment,
+  razorpay_payment_id,
+  razorpay_signature,
+}) => {
+  // Issue 5: generateBookingQRCode() takes no args now — confirm
+  // qrCode.services.js has actually been updated to match this signature.
+  const { qrToken, qrImage } = await generateBookingQRCode();
   const qrExpiresAt = booking.endTime;
 
-  // Transaction
-
-  const verifiedBooking = await prisma.$transaction(async (tx) => {
-    // Payment
-
+  const updatedBooking = await prisma.$transaction(async (tx) => {
+    // Issue 1: paymentType included in the guard, matching
+    // verifyOverstayPayment, so a payment.id that ever belonged to a
+    // different paymentType (e.g. REFUND) can never be flipped to SUCCESS
+    // by this code path.
     const updatedPayment = await tx.payment.updateMany({
       where: {
-        bookingId: booking.id,
+        id: payment.id,
         paymentStatus: PAYMENT_STATUS.PENDING,
+        paymentType: PAYMENT_TYPE.BOOKING,
       },
       data: {
         paymentStatus: PAYMENT_STATUS.SUCCESS,
         razorpayPaymentId: razorpay_payment_id,
         razorpaySignature: razorpay_signature,
+        paidAt: new Date(),
       },
     });
 
     if (updatedPayment.count === 0) {
-      throw new ApiError(409, "Payment has already been processed.");
+      throw new ApiError(409, "Payment already processed.");
     }
 
-    // Booking
-
-    const updatedBooking = await tx.booking.update({
+    // Issue 4: Payment -> Booking -> Slot. Booking is the business source
+    // of truth; slot status is just inventory bookkeeping, so it reads
+    // more naturally updated last. All three still happen atomically
+    // inside this $transaction, so ordering here is about readability,
+    // not correctness — a thrown error at any step rolls everything back.
+    const updateBooking = await tx.booking.update({
       where: {
         id: booking.id,
       },
@@ -207,7 +222,7 @@ const verifyPayment = async (
       data: {
         bookingStatus: BOOKING_STATUS.CONFIRMED,
 
-        qrCode,
+        qrToken,
 
         qrExpiresAt,
       },
@@ -233,17 +248,8 @@ const verifyPayment = async (
             city: true,
           },
         },
-
-        payment: {
-          select: {
-            paymentStatus: true,
-            razorpayPaymentId: true,
-          },
-        },
       },
     });
-
-    // Parking Slot
 
     const updatedSlot = await tx.parkingSlot.updateMany({
       where: {
@@ -259,9 +265,227 @@ const verifyPayment = async (
       throw new ApiError(409, "Parking slot is no longer available.");
     }
 
+    return updateBooking;
+  });
+
+  // Response shape now matches verifyOverstayPayment: a flat booking
+  // object plus extra fields, rather than nesting it under
+  // `updatedBooking`. Also returns paymentType explicitly (Improvement)
+  // so the frontend doesn't have to infer which flow just ran.
+  return { ...updatedBooking, paymentType: PAYMENT_TYPE.BOOKING, qrImage };
+};
+
+const verifyOverstayPayment = async ({
+  booking,
+  payment,
+  razorpay_payment_id,
+  razorpay_signature,
+}) => {
+  const completedBooking = await prisma.$transaction(async (tx) => {
+    const updatedPayment = await tx.payment.updateMany({
+      where: {
+        id: payment.id,
+        paymentStatus: PAYMENT_STATUS.PENDING,
+        paymentType: PAYMENT_TYPE.OVERSTAY,
+      },
+
+      data: {
+        paymentStatus: PAYMENT_STATUS.SUCCESS,
+        razorpayPaymentId: razorpay_payment_id,
+        razorpaySignature: razorpay_signature,
+        paidAt: new Date(),
+      },
+    });
+
+    if (updatedPayment.count === 0) {
+      throw new ApiError(409, "Overstay payment has already been processed.");
+    }
+
+    const updatedBooking = await tx.booking.update({
+      where: {
+        id: booking.id,
+      },
+
+      data: {
+        bookingStatus: BOOKING_STATUS.COMPLETED,
+      },
+
+      include: {
+        vehicle: {
+          select: {
+            vehicleNumber: true,
+            vehicleType: true,
+          },
+        },
+
+        slot: {
+          select: {
+            slotNumber: true,
+            floorNumber: true,
+          },
+        },
+
+        lot: {
+          select: {
+            name: true,
+            city: true,
+            overstayRate: true,
+          },
+        },
+
+        payments: {
+          orderBy: {
+            createdAt: "asc",
+          },
+
+          select: {
+            paymentType: true,
+            paymentStatus: true,
+            amount: true,
+            paidAt: true,
+          },
+        },
+      },
+    });
+
+    const updatedSlot = await tx.parkingSlot.updateMany({
+      where: {
+        id: booking.slotId,
+        status: SLOT_STATUS.OCCUPIED,
+      },
+
+      data: {
+        status: SLOT_STATUS.AVAILABLE,
+      },
+    });
+
+    if (updatedSlot.count === 0) {
+      throw new ApiError(409, "Parking slot could not be released.");
+    }
+
     return updatedBooking;
   });
 
-  return verifiedBooking;
+  return { ...completedBooking, paymentType: PAYMENT_TYPE.OVERSTAY };
 };
+
+const verifyPayment = async (
+  userId,
+  bookingId,
+  { razorpay_order_id, razorpay_payment_id, razorpay_signature },
+) => {
+  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+    throw new ApiError(400, "Missing payment verification fields");
+  }
+
+  // Fetch Booking + Payment
+
+  const booking = await prisma.booking.findFirst({
+    where: {
+      id: bookingId,
+      userId,
+    },
+
+    include: {
+      // Issue 7: scoped to the exact razorpayOrderId being verified, not
+      // just "any pending payment" — protects against picking the wrong
+      // row if a booking ever has multiple concurrent PENDING payments
+      // (e.g. a pending refund alongside a pending overstay charge).
+      payments: {
+        where: {
+          paymentStatus: PAYMENT_STATUS.PENDING,
+          razorpayOrderId: razorpay_order_id,
+        },
+
+        orderBy: {
+          createdAt: "desc",
+        },
+
+        take: 1,
+      },
+    },
+  });
+
+  if (!booking) {
+    throw new ApiError(404, "Booking not found");
+  }
+
+  const payment = booking.payments[0];
+
+  if (!payment) {
+    throw new ApiError(404, "Pending payment not found");
+  }
+
+  // Validate Current Status
+
+  if (payment.paymentStatus !== PAYMENT_STATUS.PENDING) {
+    throw new ApiError(409, "Payment has already been verified");
+  }
+
+  if (
+    payment.paymentType === PAYMENT_TYPE.BOOKING &&
+    booking.bookingStatus !== BOOKING_STATUS.PENDING_PAYMENT
+  ) {
+    throw new ApiError(409, "Booking is not awaiting payment");
+  }
+
+  if (
+    payment.paymentType === PAYMENT_TYPE.OVERSTAY &&
+    booking.bookingStatus !== BOOKING_STATUS.OVERSTAY_PAYMENT_PENDING
+  ) {
+    throw new ApiError(409, "Booking is not awaiting overstay payment");
+  }
+
+  if (
+    payment.paymentType === PAYMENT_TYPE.BOOKING &&
+    booking.endTime <= new Date()
+  ) {
+    throw new ApiError(409, "Booking window has already expired");
+  }
+
+  // Verify Razorpay Order ID
+
+  if (payment.razorpayOrderId !== razorpay_order_id) {
+    throw new ApiError(400, "Invalid Razorpay order");
+  }
+
+  // Signature Verification (timing-safe)
+
+  const generatedSignature = crypto
+    .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+    .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+    .digest("hex");
+
+  const generatedBuffer = Buffer.from(generatedSignature, "hex");
+  const providedBuffer = Buffer.from(razorpay_signature, "hex");
+
+  if (
+    generatedBuffer.length !== providedBuffer.length ||
+    !crypto.timingSafeEqual(generatedBuffer, providedBuffer)
+  ) {
+    throw new ApiError(400, "Payment signature verification failed");
+  }
+
+  switch (payment.paymentType) {
+    case PAYMENT_TYPE.BOOKING:
+      return verifyBookingPayment({
+        booking,
+        payment,
+        razorpay_payment_id,
+        razorpay_signature,
+      });
+
+    case PAYMENT_TYPE.OVERSTAY:
+      return verifyOverstayPayment({
+        booking,
+        payment,
+        razorpay_payment_id,
+        razorpay_signature,
+      });
+
+    default:
+      throw new ApiError(400, "Unsupported payment type");
+  }
+};
+
 export { createPaymentOrder, verifyPayment };

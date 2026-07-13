@@ -4,3 +4,9 @@ export const PAYMENT_STATUS = {
   FAILED: "FAILED",
   REFUNDED: "REFUNDED",
 };
+
+export const PAYMENT_TYPE= {
+  BOOKING: "BOOKING",
+  OVERSTAY: "OVERSTAY",
+  REFUND: "REFUND",
+}
