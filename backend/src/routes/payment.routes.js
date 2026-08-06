@@ -4,7 +4,7 @@ import { verifyJWT } from "../middleware/auth.middleware.js";
 
 import {
   createPaymentOrderController,
-  verifyPaymentController,
+  verifyPaymentController,getPaymentsController
 } from "../controllers/payment.controller.js";
 
 const router = Router();
@@ -18,7 +18,9 @@ router.post(
 router.post(
   "/:bookingId/verify",
   verifyJWT,
-  verifyPaymentController,
+  verifyPaymentController
 );
+
+router.get("/", verifyJWT, getPaymentsController);
 
 export default router;

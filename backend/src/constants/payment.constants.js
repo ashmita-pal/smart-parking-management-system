@@ -10,3 +10,10 @@ export const PAYMENT_TYPE= {
   OVERSTAY: "OVERSTAY",
   REFUND: "REFUND",
 }
+
+export const PAYMENT_METHOD={
+  CARD: "CARD",
+  UPI: "UPI",
+  NET_BANKING: "NET_BANKING",
+  WALLET: "WALLET"
+}

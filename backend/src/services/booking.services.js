@@ -2,6 +2,7 @@ import prisma from "../config/prisma.js";
 import { ApiError } from "../utils/api-error.js";
 import { SLOT_STATUS } from "../constants/parking.constants.js";
 import { BOOKING_STATUS } from "../constants/booking.constants.js";
+import { buildBookingFilters } from "../helpers/build-booking-fliters.js";
 
 const createBooking = async (userId, { slotId, vehicleId, durationHours }) => {
   if (!Number.isInteger(durationHours) || durationHours <= 0) {
@@ -162,47 +163,113 @@ const createBooking = async (userId, { slotId, vehicleId, durationHours }) => {
   return booking;
 };
 
-const getMyBookings = async (userId) => {
-  const bookings = await prisma.booking.findMany({
-    where: {
-      userId,
-    },
+const getMyBookings = async (userId, filters) => {
+  let {
+    page = 1,
+    limit = 10,
+    search,
+    lotId,
+    from,
+    to,
+    status,
+    paymentStatus,
+    sort,
+  } = filters;
 
-    orderBy: {
-      createdAt: "desc",
-    },
+  page = Number(page);
+  limit = Number(limit);
 
-    include: {
-      vehicle: {
-        select: {
-          id: true,
-          vehicleNumber: true,
-          vehicleType: true,
-        },
-      },
+  if (Number.isNaN(page) || page < 1) {
+    page = 1;
+  }
 
-      slot: {
-        select: {
-          id: true,
-          slotNumber: true,
-          floorNumber: true,
-          slotType: true,
-          status: true,
-        },
-      },
+  if (Number.isNaN(limit) || limit < 1) {
+    limit = 10;
+  }
 
-      lot: {
-        select: {
-          id: true,
-          name: true,
-          city: true,
-          address: true,
-        },
-      },
-    },
+  limit = Math.min(limit, 100);
+
+  const skip = (page - 1) * limit;
+
+  const where = buildBookingFilters({
+    userId,
+    search,
+    lotId,
+    from,
+    to,
+    status,
+    paymentStatus,
   });
 
-  return bookings;
+  const [totalRecords, filteredRecords] = await prisma.$transaction([
+    prisma.booking.count({
+      where,
+    }),
+    prisma.booking.findMany({
+      where,
+      skip,
+      take: limit,
+
+      orderBy: {
+        createdAt: sort === "asc" ? "asc" : "desc",
+      },
+
+      include: {
+        vehicle: {
+          select: {
+            id: true,
+            vehicleNumber: true,
+            vehicleType: true,
+          },
+        },
+
+        slot: {
+          select: {
+            id: true,
+            slotNumber: true,
+            floorNumber: true,
+          },
+        },
+
+        lot: {
+          select: {
+            id: true,
+            name: true,
+            city: true,
+          },
+        },
+
+        payment: {
+          orderBy: {
+            createdAt: "desc",
+          },
+
+          select: {
+            id: true,
+            amount: true,
+            paymentType: true,
+            paymentStatus: true,
+            paymentMethod: true,
+            paidAt: true,
+            createdAt: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  return {
+    filteredRecords,
+
+    pagination: {
+      page,
+      limit,
+      totalRecords,
+      totalPages: Math.ceil(totalRecords / limit),
+      hasNextPage: page * limit < totalRecords,
+      hasPreviousPage: page > 1,
+    },
+  };
 };
 
 const getBookingById = async (userId, bookingId) => {

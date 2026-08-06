@@ -9,6 +9,8 @@ import razorpay from "../config/razorpay.js";
 import crypto from "crypto";
 import { generateBookingQRCode } from "./qrCode.services.js";
 import { SLOT_STATUS } from "../constants/parking.constants.js";
+import { paymentFilters } from "../helpers/build-payment-filters.js"; 
+
 
 const createRazorpayOrder = async ({
   booking,
@@ -488,4 +490,117 @@ const verifyPayment = async (
   }
 };
 
-export { createPaymentOrder, verifyPayment };
+const getPayment = async (userId, filters) => {
+  let {
+    page = 1,
+    limit = 10,
+    search,
+    paymentMethod,
+    paymentType,
+    paymentStatus,
+    from,
+    to,
+    sort = "desc",
+  } = filters;
+
+  page = Number(page);
+  limit = Number(limit);
+
+  if (Number.isNaN(page) || page < 1) {
+    page = 1;
+  }
+  if (Number.isNaN(limit) || limit < 1) {
+    limit = 10;
+  }
+
+  limit = Math.min(limit, 100);
+
+  const skip = (page - 1) * limit;
+
+  const where = paymentFilters({
+    userId,
+    search,
+    paymentMethod,
+    paymentType,
+    paymentStatus,
+    from,
+    to,
+  });
+
+  const [totalPayments, filteredPaymentRecords] = await prisma.$transaction([
+    prisma.payment.count({
+      where,
+    }),
+    prisma.payment.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: {
+        paidAt: sort === "asc" ? "asc" : "desc",
+      },
+
+      select: {
+        id: true,
+
+        amount: true,
+
+        currency: true,
+
+        paymentStatus: true,
+
+        paymentType: true,
+
+        paymentMethod: true,
+
+        description: true,
+
+        paidAt: true,
+
+        createdAt: true,
+
+        booking: {
+          select: {
+            id: true,
+            bookingReference: true,
+            bookingStatus: true,
+            startTime: true,
+            endTime: true,
+            entryTime: true,
+            exitTime: true,
+            overstayMinutes: true,
+            overstayAmount: true,
+            vehicle: {
+              select: {
+                id: true,
+                vehicleNumber: true,
+                vehicleType: true,
+              },
+            },
+            lot: {
+              select: {
+                id: true,
+                name: true,
+                city: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+  ]);    
+
+  return {
+    filteredPaymentRecords,
+
+    pagination: {
+      page,
+      limit,
+      totalPayments,
+      totalPages: Math.ceil(totalPayments / limit) || 1,
+      hasNextPage: page * limit < totalPayments,
+      hasPreviousPage: page > 1,
+    },
+  };
+};
+
+export { createPaymentOrder, verifyPayment,  getPayment};

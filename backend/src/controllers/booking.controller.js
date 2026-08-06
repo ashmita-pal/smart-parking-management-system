@@ -46,16 +46,12 @@ const createBookingController = asyncHandler(async (req, res) => {
   );
 });
 
-const getMyBookingsController = asyncHandler(async (req, res) => {
-  const bookings = await getMyBookings(req.user.id);
+const getBookingsController = asyncHandler(async (req, res) => {
+  const bookings = await getMyBookings(req.user.id, req.query);
 
-  return res.status(200).json(
-    new ApiResponse(
-      200,
-      bookings,
-      "Bookings fetched successfully",
-    ),
-  );
+  return res
+    .status(200)
+    .json(new ApiResponse(200, bookings, "Bookings fetched successfully"));
 });
 
 const getBookingByIdController = asyncHandler(async(req, res)=>{
@@ -137,6 +133,6 @@ const checkoutController = asyncHandler(async (req, res) => {
 });
 
 export {
-  createBookingController, getMyBookingsController, getBookingByIdController, 
+  createBookingController, getBookingsController, getBookingByIdController, 
   cancelBookingController, checkInController, gateStatusController, checkoutController
 };

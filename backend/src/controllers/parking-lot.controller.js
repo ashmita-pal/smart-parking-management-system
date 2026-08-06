@@ -51,6 +51,8 @@ const createParkingLotController =
         longitude,
         pricePerHour,
         totalSlots,
+        gracePeriodMinutes,
+        overstayRate,
       });
 
     return res.status(201).json(

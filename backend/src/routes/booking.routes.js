@@ -3,8 +3,9 @@ import { Router } from "express";
 import { verifyJWT } from "../middleware/auth.middleware.js";
 
 import {
-  createBookingController, getMyBookingsController, getBookingByIdController, 
-  cancelBookingController, checkInController, checkoutController, gateStatusController
+  createBookingController, getBookingsController, getBookingByIdController, 
+  cancelBookingController, checkInController, checkoutController, gateStatusController,
+
 } from "../controllers/booking.controller.js";
 
 const router = Router();
@@ -15,7 +16,7 @@ router.post(
   createBookingController,
 );
 
-router.get( "/", verifyJWT, getMyBookingsController,
+router.get( "/", verifyJWT, getBookingsController,
 );
 
 router.get("/:bookingId", verifyJWT, getBookingByIdController,
