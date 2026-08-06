@@ -1,20 +1,24 @@
 import { asyncHandler } from "../utils/async-handler.js";
 import { ApiResponse } from "../utils/api-response.js";
-import { registerUser, loginUser } from "../services/auth.services.js";
 import { ApiError } from "../utils/api-error.js";
 import { generateAccessToken } from "../utils/generateToken.js";
+import { verifyJWT } from "../middleware/auth.middleware.js";
 import { cookieOptions } from "../constants/cookieOptions.js";
+import {
+  registerUser,
+  loginUser,
+  verifyEmail,
+  resendVerificationEmail, forgotPassword, resetPassword
+} from "../services/auth.services.js";
 
 const registerController = asyncHandler(async (req, res) => {
   const { name, email, password, phone } = req.body;
-  if (
-  [name, email, password, phone].some(
-    (field) => !field?.trim()
-  )
-) {
-  throw new ApiError(400, "All fields are required");
-}
-  const user = await registerUser({
+
+  if ([name, email, password, phone].some((field) => !field?.trim())) {
+    throw new ApiError(400, "All fields are required.");
+  }
+
+  const result = await registerUser({
     name,
     email,
     password,
@@ -22,18 +26,26 @@ const registerController = asyncHandler(async (req, res) => {
   });
 
   const userResponse = {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    phone: user.phone,
-    role: user.role,
-    isEmailVerified: user.isEmailVerified,
-    createdAt: user.createdAt,
+    id: result.user.id,
+    name: result.user.name,
+    email: result.user.email,
+    phone: result.user.phone,
+    role: result.user.role,
+    isEmailVerified: result.user.isEmailVerified,
+    createdAt: result.user.createdAt,
   };
 
-  return res
-    .status(201)
-    .json(new ApiResponse(201, userResponse, "User registered successfully"));
+  return res.status(201).json(
+    new ApiResponse(
+      201,
+      {
+        user: userResponse,
+        emailSent: result.emailSent,
+        canResendVerification: result.canResendVerification,
+      },
+      result.message,
+    ),
+  );
 });
 
 const loginController = asyncHandler(async (req, res) => {
@@ -48,7 +60,7 @@ const loginController = asyncHandler(async (req, res) => {
     password,
   });
 
-
+  const accessToken = generateAccessToken(user);
   const userResponse = {
     id: user.id,
     name: user.name,
@@ -58,16 +70,11 @@ const loginController = asyncHandler(async (req, res) => {
     isEmailVerified: user.isEmailVerified,
   };
 
-  const accessToken= generateAccessToken(user);
-
-  return res.status(200) .cookie("accessToken", accessToken,cookieOptions,).json(
-    new ApiResponse(
-      200,
-      userResponse,
-      "Login successful",
-    ),
-  );
-}); 
+  return res
+    .status(200)
+    .cookie("accessToken", accessToken, cookieOptions)
+    .json(new ApiResponse(200, userResponse, "Login successful"));
+});
 
 const getCurrentUser = asyncHandler(async (req, res) => {
   return res
@@ -78,17 +85,80 @@ const getCurrentUser = asyncHandler(async (req, res) => {
 const logoutController = asyncHandler(async (req, res) => {
   return res
     .status(200)
-    .clearCookie(
-      "accessToken",
-      cookieOptions,
-    )
-    .json(
-      new ApiResponse(
-        200,
-        {},
-        "Logout successful",
-      ),
-    );
+    .clearCookie("accessToken", cookieOptions)
+    .json(new ApiResponse(200, {}, "Logout successful"));
 });
 
-export { registerController, loginController , getCurrentUser, logoutController};
+const verifyEmailController = asyncHandler(async (req, res) => {
+  const { token } = req.body;
+
+  if (!token) {
+    throw new ApiError(400, "Verification token is required.");
+  }
+
+  const result = await verifyEmail(token);
+
+  return res.status(200).json(new ApiResponse(200, result, result.message));
+});
+
+const resendVerificationEmailController = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  if (!email?.trim()) {
+    throw new ApiError(400, "Email is required.");
+  }
+
+  const result = await resendVerificationEmail({
+    email,
+  });
+
+  return res.status(200).json(new ApiResponse(200, result, result.message));
+});
+
+const forgotPasswordController = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  if (!email?.trim()) {
+    throw new ApiError(400, "Email is required.");
+  }
+
+  const result = await forgotPassword({
+    email,
+  });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, result.message));
+});
+
+const resetPasswordController = asyncHandler(async (req, res) => {
+  const { token, newPassword } = req.body;
+
+  if (!token?.trim()) {
+    throw new ApiError(400, "Reset token is required.");
+  }
+
+  if (!newPassword?.trim()) {
+    throw new ApiError(400, "New password is required.");
+  }
+
+  const result = await resetPassword({
+    token,
+    newPassword,
+  });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, result.message));
+});
+
+export {
+  registerController,
+  loginController,
+  getCurrentUser,
+  logoutController,
+  verifyEmailController,
+  resendVerificationEmailController,
+  forgotPasswordController,
+  resetPasswordController
+};

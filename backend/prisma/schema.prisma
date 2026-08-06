@@ -22,6 +22,8 @@ model User {
   deletedAt               DateTime?
   bookings                Booking[]
   vehicles                Vehicle[]
+  passwordResetToken      String?
+  passwordResetExpiry     DateTime?
 
   @@map("users")
 }
@@ -42,7 +44,7 @@ model Vehicle {
 }
 
 model ParkingLot {
-  id           String        @id @default(uuid())
+  id           String    @id @default(uuid())
   name         String
   description  String?
   address      String
@@ -52,14 +54,16 @@ model ParkingLot {
   longitude    Float
   pricePerHour Decimal
   gracePeriodMinutes  Int      @default(15)
-  overstayRate Decimal       @default(100)
+
+  overstayRate        Decimal @default(100)
   totalSlots   Int
-  isActive     Boolean       @default(true)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
-  slots        ParkingSlot[]
-  bookings     Booking[]
+
+  slots    ParkingSlot[]
+  bookings Booking[]
 
   @@map("parking_lots")
 }
@@ -98,12 +102,16 @@ model Booking {
   endTime   DateTime
 
   totalAmount Decimal
+  
+  overstayMinutes Int @default(0)
+
+  overstayAmount Decimal @default(0)
 
   bookingStatus BookingStatus @default(PENDING_PAYMENT)
 
   expiresAt DateTime?
 
-  qrCode      String? @unique 
+  qrToken String? @unique
   qrExpiresAt DateTime?
 
   entryTime DateTime?
@@ -117,17 +125,16 @@ model Booking {
   lot     ParkingLot  @relation(fields: [lotId], references: [id])
   slot    ParkingSlot @relation(fields: [slotId], references: [id])
 
-  payment Payment[]
+
+
+  payments Payment[]
 
   @@index([bookingStatus, endTime])
-  overstayMinutes Int @default(0)
-
-  overstayAmount Decimal @default(0)
-
   @@index([userId])
   @@index([vehicleId])
   @@index([lotId])
   @@index([slotId])
+  @@index([bookingStatus])
   @@map("bookings")
 }
 
@@ -135,13 +142,14 @@ model Payment {
 
   id String @id @default(uuid())
 
-  bookingId String 
+  bookingId String
+
 
   razorpayOrderId String?
 
   razorpayPaymentId String?
 
-  razorpaySignature String?   // NEW
+  razorpaySignature String?   
 
   amount Decimal
 
@@ -153,28 +161,24 @@ model Payment {
 
   paymentStatus PaymentStatus @default(PENDING)
 
+
+  paymentType PaymentType @default(BOOKING)
+  paidAt DateTime?
+
   failureReason String?
 
   refundedAt DateTime?
+  refundAmount Decimal? @default(0)
 
   createdAt DateTime @default(now())
 
   updatedAt DateTime @updatedAt
 
-  paidAt DateTime?
-
-  refundAmount Decimal? @default(0)
-
   booking Booking @relation(fields:[bookingId],references:[id])
 
-  paymentType PaymentType @default(BOOKING)
-
-  @@index([bookingId, paymentType])
-
   @@index([paymentStatus])
-
+  @@index([bookingId, paymentType])
   @@index([paymentType])
-
   @@index([bookingId])
 
   @@map("payments")
@@ -207,15 +211,22 @@ enum SlotStatus {
 }
 
 enum BookingStatus {
-  PENDING_PAYMENT
-  CONFIRMED
-  ACTIVE
-  OVERSTAY_PAYMENT_PENDING
-  COMPLETED
-  CANCELLED
-  EXPIRED
-}
 
+PENDING_PAYMENT
+
+CONFIRMED
+
+ACTIVE
+
+OVERSTAY_PAYMENT_PENDING
+
+COMPLETED
+
+CANCELLED
+
+EXPIRED
+
+}
 
 enum PaymentStatus {
   PENDING
@@ -230,6 +241,8 @@ enum PaymentMethod {
   NET_BANKING
   WALLET
 }
+
+
 
 enum PaymentType {
   BOOKING
