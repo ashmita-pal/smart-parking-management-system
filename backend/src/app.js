@@ -11,8 +11,17 @@ import vehicleRoutes from "./routes/vehicle.routes.js";
 import bookingRoutes from "./routes/booking.routes.js";
 import payementRoutes from "./routes/payment.routes.js";
 import dashboardRoutes from "./routes/dashboard.routes.js";
+import availabilityRoutes from "./routes/availability.routes.js";
+import cors from "cors";
 
 const app = express();
+
+app.use(
+  cors({
+    origin: "http://localhost:5173",
+    credentials: true,
+  }),
+);
 
 app.use(cookieParser());
 app.use(express.json());
@@ -39,5 +48,6 @@ app.use("/api/v1/vehicle",vehicleRoutes);
 app.use("/api/v1/bookings", bookingRoutes);
 app.use("/api/v1/payments", payementRoutes);
 app.use("/api/v1/dashboard", dashboardRoutes);
+app.use("/api/v1/availability", availabilityRoutes);
 app.use(errorHandler);
 export default app;

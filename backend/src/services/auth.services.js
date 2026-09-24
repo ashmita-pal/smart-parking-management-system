@@ -1,38 +1,33 @@
 import bcrypt from "bcrypt";
-
+import { randomInt } from "crypto";
 import prisma from "../config/prisma.js";
-
 import { ApiError } from "../utils/api-error.js";
-
 import {
-  generateVerificationToken,
+  generateResetPasswordToken,
   hashToken,
 } from "../utils/token.utils.js";
+import {
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+  passwordResetSuccessfulEmail,
+} from "./email.services.js";
 
-import { sendVerificationEmail, sendPasswordResetEmail } from "./email.services.js";
+/* Generate a secure 6-digit verification code */
+const generateVerificationCode = () => {
+  return randomInt(100000, 1000000).toString();
+};
 
-
-const sendVerificationEmailToUser = async ({
-  user,
-  token,
-}) => {
-  const verificationUrl =
-    `${process.env.FRONTEND_URL}/verify-email?token=${token}`;
-
+/* Private Helper: Sends verification code */
+const sendVerificationEmailToUser = async ({ user, code }) => {
   await sendVerificationEmail({
     name: user.name,
     email: user.email,
-    verificationUrl,
+    verificationCode: code,
   });
 };
 
-
-const registerUser = async ({
-  name,
-  email,
-  password,
-  phone,
-}) => {
+/* Register User */
+const registerUser = async ({ name, email, password, phone }) => {
   const existingUser = await prisma.user.findUnique({
     where: {
       email,
@@ -41,25 +36,26 @@ const registerUser = async ({
 
   if (existingUser) {
     if (existingUser.isEmailVerified) {
-      throw new ApiError(
-        409,
-        "User already exists with this email."
-      );
+      throw new ApiError(409, "User already exists with this email.");
     }
 
     throw new ApiError(
       409,
-      "Email is already registered but not verified. Please verify your email or request a new verification email."
+      "Email is already registered but not verified. Please verify your email or request a new verification code.",
     );
   }
 
   const hashedPassword = await bcrypt.hash(password, 10);
 
-  const { token, hashedToken } =
-    generateVerificationToken();
+  // Generate 6-digit verification code
+  const verificationCode = generateVerificationCode();
 
+  // Store only the hashed version of the code
+  const hashedCode = hashToken(verificationCode);
+
+  // Verification code expires after 5 minutes
   const verificationExpiry = new Date(
-    Date.now() + 24 * 60 * 60 * 1000
+    Date.now() + 5 * 60 * 1000,
   );
 
   const user = await prisma.user.create({
@@ -68,10 +64,8 @@ const registerUser = async ({
       email,
       password: hashedPassword,
       phone,
-
-      emailVerificationToken: hashedToken,
-      emailVerificationExpiry:
-        verificationExpiry,
+      emailVerificationToken: hashedCode,
+      emailVerificationExpiry: verificationExpiry,
     },
   });
 
@@ -80,10 +74,23 @@ const registerUser = async ({
   try {
     await sendVerificationEmailToUser({
       user,
-      token,
+      code: verificationCode,
+    });
+
+    // Record the time when the verification email was successfully sent
+    await prisma.user.update({
+      where: {
+        id: user.id,
+      },
+      data: {
+        emailVerificationSentAt: new Date(),
+      },
     });
   } catch (error) {
-    console.error("Verification email sending failed:", error);
+    console.error(
+      "Verification email sending failed:",
+      error,
+    );
 
     emailSent = false;
   }
@@ -93,16 +100,13 @@ const registerUser = async ({
     emailSent,
     canResendVerification: !emailSent,
     message: emailSent
-      ? "Registration successful. Please verify your email."
-      : "Registration successful, but verification email could not be sent. Please request a new verification email.",
+      ? "Registration successful. Please check your email for the verification code."
+      : "Registration successful, but verification email could not be sent. Please request a new verification code.",
   };
 };
 
-
-const loginUser = async ({
-  email,
-  password,
-}) => {
+/* Login User */
+const loginUser = async ({ email, password }) => {
   const user = await prisma.user.findUnique({
     where: {
       email,
@@ -110,57 +114,60 @@ const loginUser = async ({
   });
 
   if (!user) {
-    throw new ApiError(
-      401,
-      "Invalid email or password."
-    );
+    throw new ApiError(401, "Invalid email or password.");
   }
 
-  const isPasswordCorrect =
-    await bcrypt.compare(
-      password,
-      user.password
-    );
+  const isPasswordCorrect = await bcrypt.compare(
+    password,
+    user.password,
+  );
 
   if (!isPasswordCorrect) {
-    throw new ApiError(
-      401,
-      "Invalid email or password."
-    );
+    throw new ApiError(401, "Invalid email or password.");
   }
 
   if (!user.isEmailVerified) {
     throw new ApiError(
       403,
-      "Please verify your email before logging in."
+      "Please verify your email before logging in.",
     );
   }
 
   return user;
 };
 
-
-const verifyEmail = async (token) => {
-  const hashedToken = hashToken(token);
+/* Verify Email Using 6-Digit Code */
+const verifyEmail = async ({ email, code }) => {
+  const hashedCode = hashToken(code);
 
   return await prisma.$transaction(async (tx) => {
-    const user = await tx.user.findFirst({
+    const user = await tx.user.findUnique({
       where: {
-        emailVerificationToken: hashedToken,
+        email,
       },
     });
 
     if (!user) {
       throw new ApiError(
         400,
-        "Invalid verification token."
+        "Invalid email or verification code.",
       );
     }
 
     if (user.isEmailVerified) {
       throw new ApiError(
         400,
-        "Email is already verified."
+        "Email is already verified.",
+      );
+    }
+
+    if (
+      !user.emailVerificationToken ||
+      user.emailVerificationToken !== hashedCode
+    ) {
+      throw new ApiError(
+        400,
+        "Invalid verification code.",
       );
     }
 
@@ -170,7 +177,7 @@ const verifyEmail = async (token) => {
     ) {
       throw new ApiError(
         400,
-        "Verification token has expired."
+        "Verification code has expired.",
       );
     }
 
@@ -193,10 +200,8 @@ const verifyEmail = async (token) => {
   });
 };
 
-
-const resendVerificationEmail = async ({
-  email,
-}) => {
+/* Resend Verification Code */
+const resendVerificationEmail = async ({ email }) => {
   const user = await prisma.user.findUnique({
     where: {
       email,
@@ -204,61 +209,83 @@ const resendVerificationEmail = async ({
   });
 
   if (!user) {
-    throw new ApiError(
-      404,
-      "User not found."
-    );
+    throw new ApiError(404, "User not found.");
   }
 
   if (user.isEmailVerified) {
     throw new ApiError(
       400,
-      "Email is already verified."
+      "Email is already verified.",
     );
   }
 
-  const { token, hashedToken } =
-    generateVerificationToken();
+  // User can request a new verification code only once every 5 minutes
+  const RESEND_COOLDOWN = 5 * 60 * 1000;
 
+  if (user.emailVerificationSentAt) {
+    const elapsedTime =
+      Date.now() -
+      user.emailVerificationSentAt.getTime();
+
+    if (elapsedTime < RESEND_COOLDOWN) {
+      const remainingSeconds = Math.ceil(
+        (RESEND_COOLDOWN - elapsedTime) / 1000,
+      );
+
+      throw new ApiError(
+        429,
+        `Please wait ${remainingSeconds} seconds before requesting another verification code.`,
+      );
+    }
+  }
+
+  // Generate a completely new 6-digit verification code
+  const verificationCode = generateVerificationCode();
+
+  // Store only the hashed version
+  const hashedCode = hashToken(verificationCode);
+
+  // New verification code expires after 5 minutes
   const verificationExpiry = new Date(
-    Date.now() + 24 * 60 * 60 * 1000
+    Date.now() + 5 * 60 * 1000,
   );
 
+  try {
+    await sendVerificationEmailToUser({
+      user,
+      code: verificationCode,
+    });
+  } catch (error) {
+    console.error(
+      "Verification email sending failed:",
+      error,
+    );
+
+    throw new ApiError(
+      503,
+      "Unable to send verification email. Please try again later.",
+    );
+  }
+
+  // Email was successfully sent, so replace the old code
   await prisma.user.update({
     where: {
       id: user.id,
     },
     data: {
-      emailVerificationToken: hashedToken,
-      emailVerificationExpiry:
-        verificationExpiry,
+      emailVerificationToken: hashedCode,
+      emailVerificationExpiry: verificationExpiry,
+      emailVerificationSentAt: new Date(),
     },
   });
 
-  try {
-    await sendVerificationEmailToUser({
-      user,
-      token,
-    });
-  } catch (error) {
-    console.error(
-      "Verification email sending failed:",
-      error
-    );
-
-    throw new ApiError(
-      503,
-      "Unable to send verification email. Please try again later."
-    );
-  }
-
   return {
     email: user.email,
-    message:
-      "Verification email sent successfully.",
+    message: "Verification code sent successfully.",
   };
 };
 
+/* Forgot Password */
 const forgotPassword = async ({ email }) => {
   const user = await prisma.user.findUnique({
     where: {
@@ -266,7 +293,7 @@ const forgotPassword = async ({ email }) => {
     },
   });
 
-  /**
+  /*
    * Prevent Email Enumeration
    * Always return success even if the email doesn't exist.
    */
@@ -277,10 +304,13 @@ const forgotPassword = async ({ email }) => {
     };
   }
 
-  const { token, hashedToken } = generateVerificationToken();
+  // Generate secure password reset token
+  const { token, hashedToken } =
+    generateResetPasswordToken();
 
+  // Password reset token expires after 15 minutes
   const passwordResetExpiry = new Date(
-    Date.now() + 15 * 60 * 1000
+    Date.now() + 15 * 60 * 1000,
   );
 
   await prisma.user.update({
@@ -293,7 +323,9 @@ const forgotPassword = async ({ email }) => {
     },
   });
 
-  const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
+  // Create password reset URL
+  const resetUrl =
+    `${process.env.FRONTEND_URL}/reset-password?token=${token}`;
 
   try {
     await sendPasswordResetEmail({
@@ -302,11 +334,14 @@ const forgotPassword = async ({ email }) => {
       resetUrl,
     });
   } catch (error) {
-    console.error("Password reset email sending failed:", error);
+    console.error(
+      "Password reset email sending failed:",
+      error,
+    );
 
     throw new ApiError(
       503,
-      "Unable to send password reset email. Please try again later."
+      "Unable to send password reset email. Please try again later.",
     );
   }
 
@@ -316,41 +351,70 @@ const forgotPassword = async ({ email }) => {
   };
 };
 
-const resetPassword = async({token, newPassword})=>{
-  const hashedToken= hashToken(token);
+/* Reset Password */
+const resetPassword = async ({
+  token,
+  newPassword,
+}) => {
+  const hashedToken = hashToken(token);
 
-  const user =await prisma.user.findFirst({
-    where:{
+  const user = await prisma.user.findFirst({
+    where: {
       passwordResetToken: hashedToken,
     },
   });
 
-  if(!user){
-    throw new ApiError(400, "Invalid password reset token");
+  if (!user) {
+    throw new ApiError(
+      400,
+      "Invalid Password Reset Token",
+    );
   }
 
-  if(!user.passwordResetExpiry || user.passwordResetExpiry< new Date()){
-    throw new ApiError(400, "Password reset token expired");
+  if (
+    !user.passwordResetExpiry ||
+    user.passwordResetExpiry < new Date()
+  ) {
+    throw new ApiError(
+      400,
+      "Reset Password token expired",
+    );
   }
 
-  const hashedPassword= await bcrypt.hash(newPassword, 10);
+  const hashedPassword = await bcrypt.hash(
+    newPassword,
+    10,
+  );
 
+  // Change password and invalidate reset token
   await prisma.user.update({
-    where:{
+    where: {
       id: user.id,
     },
-    data:{
+    data: {
       password: hashedPassword,
       passwordResetExpiry: null,
       passwordResetToken: null,
     },
   });
 
-  return {
-    message: "Password reset successfully",
+  // Send password reset successful email
+  try {
+    await passwordResetSuccessfulEmail({
+      name: user.name,
+      email: user.email,
+    });
+  } catch (error) {
+    console.error(
+      "Password reset successful email sending failed:",
+      error,
+    );
   }
-}
 
+  return {
+    message: "Password Reset Successful.",
+  };
+};
 
 export {
   registerUser,
@@ -358,5 +422,6 @@ export {
   verifyEmail,
   resendVerificationEmail,
   forgotPassword,
-  resetPassword
+  resetPassword,
+  passwordResetSuccessfulEmail
 };

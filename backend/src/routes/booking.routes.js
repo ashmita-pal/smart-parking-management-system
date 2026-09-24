@@ -4,7 +4,7 @@ import { verifyJWT } from "../middleware/auth.middleware.js";
 
 import {
   createBookingController, getBookingsController, getBookingByIdController, 
-  cancelBookingController, checkInController, checkoutController, gateStatusController,
+  cancelBookingController, checkInController, checkOutController, gateStatusController,
 
 } from "../controllers/booking.controller.js";
 
@@ -27,7 +27,7 @@ router.patch("/:bookingId/cancel", verifyJWT, cancelBookingController,
  
 router.post("/check-in", verifyJWT, checkInController);
 
-router.patch("/:bookingId/checkout", verifyJWT, checkoutController);
+router.post("/check-out", verifyJWT, checkOutController);
 
 router.get("/:bookingId/gate-status", verifyJWT, gateStatusController);
 

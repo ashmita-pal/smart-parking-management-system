@@ -8,7 +8,9 @@ import {
   registerUser,
   loginUser,
   verifyEmail,
-  resendVerificationEmail, forgotPassword, resetPassword
+  resendVerificationEmail,
+  forgotPassword,
+  resetPassword,
 } from "../services/auth.services.js";
 
 const registerController = asyncHandler(async (req, res) => {
@@ -61,6 +63,7 @@ const loginController = asyncHandler(async (req, res) => {
   });
 
   const accessToken = generateAccessToken(user);
+
   const userResponse = {
     id: user.id,
     name: user.name,
@@ -79,7 +82,13 @@ const loginController = asyncHandler(async (req, res) => {
 const getCurrentUser = asyncHandler(async (req, res) => {
   return res
     .status(200)
-    .json(new ApiResponse(200, req.user, "Current user fetched successfully"));
+    .json(
+      new ApiResponse(
+        200,
+        req.user,
+        "Current user fetched successfully",
+      ),
+    );
 });
 
 const logoutController = asyncHandler(async (req, res) => {
@@ -90,30 +99,43 @@ const logoutController = asyncHandler(async (req, res) => {
 });
 
 const verifyEmailController = asyncHandler(async (req, res) => {
-  const { token } = req.body;
-
-  if (!token) {
-    throw new ApiError(400, "Verification token is required.");
-  }
-
-  const result = await verifyEmail(token);
-
-  return res.status(200).json(new ApiResponse(200, result, result.message));
-});
-
-const resendVerificationEmailController = asyncHandler(async (req, res) => {
-  const { email } = req.body;
+  const { email, code } = req.body;
 
   if (!email?.trim()) {
     throw new ApiError(400, "Email is required.");
   }
 
-  const result = await resendVerificationEmail({
+  if (!code?.trim()) {
+    throw new ApiError(400, "Verification code is required.");
+  }
+
+  const result = await verifyEmail({
     email,
+    code,
   });
 
-  return res.status(200).json(new ApiResponse(200, result, result.message));
+  return res
+    .status(200)
+    .json(new ApiResponse(200, result, result.message));
 });
+
+const resendVerificationEmailController = asyncHandler(
+  async (req, res) => {
+    const { email } = req.body;
+
+    if (!email?.trim()) {
+      throw new ApiError(400, "Email is required.");
+    }
+
+    const result = await resendVerificationEmail({
+      email,
+    });
+
+    return res
+      .status(200)
+      .json(new ApiResponse(200, result, result.message));
+  },
+);
 
 const forgotPasswordController = asyncHandler(async (req, res) => {
   const { email } = req.body;
@@ -160,5 +182,5 @@ export {
   verifyEmailController,
   resendVerificationEmailController,
   forgotPasswordController,
-  resetPasswordController
+  resetPasswordController,
 };

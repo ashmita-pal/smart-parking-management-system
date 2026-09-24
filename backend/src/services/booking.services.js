@@ -4,10 +4,31 @@ import { SLOT_STATUS } from "../constants/parking.constants.js";
 import { BOOKING_STATUS } from "../constants/booking.constants.js";
 import { buildBookingFilters } from "../helpers/build-booking-fliters.js";
 
-const createBooking = async (userId, { slotId, vehicleId, durationHours }) => {
-  if (!Number.isInteger(durationHours) || durationHours <= 0) {
-    throw new ApiError(400, "Duration must be a positive integer");
+const createBooking = async (
+  userId,
+  { slotId, vehicleId, startTime, endTime },
+) => {
+  // ==================================================
+  // VALIDATE DATE/TIME
+  // ==================================================
+
+  const requestedStart = new Date(startTime);
+  const requestedEnd = new Date(endTime);
+
+  if (
+    Number.isNaN(requestedStart.getTime()) ||
+    Number.isNaN(requestedEnd.getTime())
+  ) {
+    throw new ApiError(400, "Invalid start time or end time");
   }
+
+  if (requestedEnd <= requestedStart) {
+    throw new ApiError(400, "End time must be after start time");
+  }
+
+  // ==================================================
+  // VALIDATE VEHICLE
+  // ==================================================
 
   const vehicle = await prisma.vehicle.findFirst({
     where: {
@@ -27,8 +48,15 @@ const createBooking = async (userId, { slotId, vehicleId, durationHours }) => {
   }
 
   if (vehicle.userId !== userId) {
-    throw new ApiError(403, "You are not authorized to use this vehicle");
+    throw new ApiError(
+      403,
+      "You are not authorized to use this vehicle",
+    );
   }
+
+  // ==================================================
+  // VALIDATE PARKING SLOT
+  // ==================================================
 
   const slot = await prisma.parkingSlot.findFirst({
     where: {
@@ -54,13 +82,24 @@ const createBooking = async (userId, { slotId, vehicleId, durationHours }) => {
     throw new ApiError(404, "Parking slot not found");
   }
 
+  // ==================================================
+  // VALIDATE PARKING LOT
+  // ==================================================
+
   if (!slot.lot || slot.lot.deletedAt) {
     throw new ApiError(404, "Parking lot not found");
   }
 
   if (!slot.lot.isActive) {
-    throw new ApiError(409, "Parking lot is currently inactive");
+    throw new ApiError(
+      409,
+      "Parking lot is currently inactive",
+    );
   }
+
+  // ==================================================
+  // VEHICLE TYPE VS SLOT TYPE
+  // ==================================================
 
   if (vehicle.vehicleType !== slot.slotType) {
     throw new ApiError(
@@ -69,25 +108,107 @@ const createBooking = async (userId, { slotId, vehicleId, durationHours }) => {
     );
   }
 
-  const totalAmount = slot.lot.pricePerHour.toNumber() * durationHours;
+  // ==================================================
+  // CALCULATE DURATION
+  // ==================================================
 
-  const startTime = new Date();
+  const durationMilliseconds =
+    requestedEnd.getTime() - requestedStart.getTime();
 
-  const endTime = new Date(
-    startTime.getTime() + durationHours * 60 * 60 * 1000,
+  const actualDurationHours =
+    durationMilliseconds / (60 * 60 * 1000);
+
+  if (actualDurationHours <= 0) {
+    throw new ApiError(
+      400,
+      "Booking duration must be greater than zero",
+    );
+  }
+
+  // Round UP to the next full hour for billing
+  const durationHours = Math.ceil(actualDurationHours);
+
+  // ==================================================
+  // CALCULATE AMOUNT
+  // ==================================================
+
+  const totalAmount =
+    slot.lot.pricePerHour.toNumber() * durationHours;
+
+  // ==================================================
+  // BOOKING EXPIRY
+  // ==================================================
+
+  /*
+   * The booking gets 10 minutes to complete payment.
+   * If payment is not completed, the booking can later
+   * be expired by the existing booking-expiry process.
+   */
+
+  const expiresAt = new Date(
+    Date.now() + 10 * 60 * 1000,
   );
 
-  const expiresAt = new Date(startTime.getTime() + 10 * 60 * 1000);
+  // ==================================================
+  // BOOKING REFERENCE
+  // ==================================================
 
   const bookingReference = `BK-${Date.now()}`;
 
+  // ==================================================
+  // CREATE BOOKING
+  // ==================================================
+
   const booking = await prisma.$transaction(async (tx) => {
+    // ----------------------------------------------
+    // CHECK FOR OVERLAPPING BOOKINGS
+    // ----------------------------------------------
+
+    const conflictingBooking = await tx.booking.findFirst({
+      where: {
+        slotId,
+
+        bookingStatus: {
+          in: [
+            BOOKING_STATUS.PENDING_PAYMENT,
+            BOOKING_STATUS.CONFIRMED,
+            BOOKING_STATUS.ACTIVE,
+            BOOKING_STATUS.OVERSTAY_PAYMENT_PENDING,
+          ],
+        },
+
+        startTime: {
+          lt: requestedEnd,
+        },
+
+        endTime: {
+          gt: requestedStart,
+        },
+      },
+
+      select: {
+        id: true,
+      },
+    });
+
+    if (conflictingBooking) {
+      throw new ApiError(
+        409,
+        "Parking slot is no longer available for the selected time.",
+      );
+    }
+
+    // ----------------------------------------------
+    // TEMPORARILY RESERVE SLOT
+    // ----------------------------------------------
+
     const reservedSlot = await tx.parkingSlot.updateMany({
       where: {
         id: slotId,
         status: SLOT_STATUS.AVAILABLE,
         deletedAt: null,
       },
+
       data: {
         status: SLOT_STATUS.TEMP_RESERVED,
       },
@@ -100,6 +221,10 @@ const createBooking = async (userId, { slotId, vehicleId, durationHours }) => {
       );
     }
 
+    // ----------------------------------------------
+    // CREATE BOOKING
+    // ----------------------------------------------
+
     const createdBooking = await tx.booking.create({
       data: {
         userId,
@@ -109,12 +234,17 @@ const createBooking = async (userId, { slotId, vehicleId, durationHours }) => {
 
         bookingReference,
 
+        // Billable duration
         durationHours,
 
-        startTime,
-        endTime,
+        // Exact requested times are still preserved
+        startTime: requestedStart,
+        endTime: requestedEnd,
 
+        // Amount is based on billable hours
         totalAmount,
+
+        bookingStatus: BOOKING_STATUS.PENDING_PAYMENT,
 
         expiresAt,
       },
@@ -239,7 +369,7 @@ const getMyBookings = async (userId, filters) => {
           },
         },
 
-        payment: {
+        payments: {
           orderBy: {
             createdAt: "desc",
           },
@@ -307,7 +437,7 @@ const getBookingById = async (userId, bookingId) => {
         },
       },
 
-      payment: {
+      payments: {
         select: {
           paymentStatus: true,
           amount: true,
@@ -408,10 +538,10 @@ const cancelBooking = async (userId, bookingId) => {
   return cancelledBooking;
 };
 
-const checkIn = async (qrCode) => {
+const checkIn = async (qrToken) => {
   const booking = await prisma.booking.findUnique({
     where: {
-      qrCode: qrCode,
+      qrToken: qrToken,
     },
     select: {
       id: true,
@@ -475,15 +605,15 @@ const checkIn = async (qrCode) => {
 
     return updatedBooking;
   });
+  return checkedInBooking;
 };
 
-const checkOut = async (userId, bookingId) => {
-  const booking = await prisma.booking.findFirst({
+const checkOut = async (qrToken) => {
+  // 1. Find booking using QR token
+  const booking = await prisma.booking.findUnique({
     where: {
-      id: bookingId,
-      userId,
+      qrToken,
     },
-
     include: {
       lot: true,
       slot: true,
@@ -496,14 +626,12 @@ const checkOut = async (userId, bookingId) => {
     },
   });
 
-  // --- Validation chain: exists → ACTIVE → entryTime present → not already exited ---
-
   if (!booking) {
-    throw new ApiError(404, "Booking not found.");
+    throw new ApiError(404, "Invalid QR Code.");
   }
 
   if (booking.bookingStatus !== BOOKING_STATUS.ACTIVE) {
-    throw new ApiError(409, "Booking is not currently active.");
+    throw new ApiError(409, "Vehicle is not currently checked in.");
   }
 
   if (!booking.entryTime) {
@@ -511,13 +639,12 @@ const checkOut = async (userId, bookingId) => {
   }
 
   if (booking.exitTime) {
-    throw new ApiError(409, "Booking has already been checked out.");
+    throw new ApiError(409, "Vehicle has already been checked out.");
   }
 
   const exitTime = new Date();
 
-  // --- Overstay calculation ---
-
+  // 7. Calculate overstay
   const overstayMinutes = Math.max(
     0,
     Math.floor((exitTime - booking.endTime) / 60000),
@@ -528,8 +655,6 @@ const checkOut = async (userId, bookingId) => {
   if (overstayMinutes > booking.lot.gracePeriodMinutes) {
     const chargeableMinutes = overstayMinutes - booking.lot.gracePeriodMinutes;
 
-    // Math.ceil to avoid undercharging on fractional-rupee overstay
-    // (e.g. ₹83.33 becomes ₹84, not silently truncated to ₹83).
     overstayAmount = Math.ceil(
       (chargeableMinutes / 60) * booking.lot.overstayRate.toNumber(),
     );
@@ -537,19 +662,14 @@ const checkOut = async (userId, bookingId) => {
 
   const hasOverstay = overstayAmount > 0;
 
-  // --- Transaction: update booking, and release the slot only if there's no overstay ---
-
+  // 8. Update booking and slot atomically
   await prisma.$transaction(async (tx) => {
-    // Guarded update: only succeeds if the booking is still ACTIVE with no
-    // exitTime set yet. Protects against a double checkout race (e.g. the
-    // exit scanner firing twice, or a retried request).
     const updatedBooking = await tx.booking.updateMany({
       where: {
         id: booking.id,
         bookingStatus: BOOKING_STATUS.ACTIVE,
         exitTime: null,
       },
-
       data: {
         exitTime,
         overstayMinutes,
@@ -564,16 +684,13 @@ const checkOut = async (userId, bookingId) => {
       throw new ApiError(409, "Booking checkout could not be processed.");
     }
 
-    // Only release the slot when there's nothing left to collect. If there's
-    // an overstay charge, the slot stays occupied/reserved until payment
-    // verification completes and releases it (see verifyOverstayPayment).
+    // Release slot only when no overstay payment is required
     if (!hasOverstay) {
       const updatedSlot = await tx.parkingSlot.updateMany({
         where: {
           id: booking.slotId,
           status: SLOT_STATUS.OCCUPIED,
         },
-
         data: {
           status: SLOT_STATUS.AVAILABLE,
         },
@@ -585,6 +702,7 @@ const checkOut = async (userId, bookingId) => {
     }
   });
 
+  // 9. Return checkout information
   return {
     bookingId: booking.id,
     bookingReference: booking.bookingReference,

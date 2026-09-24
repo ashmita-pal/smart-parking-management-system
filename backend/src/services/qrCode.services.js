@@ -7,7 +7,7 @@ const generateBookingQRCode = async (booking) => {
 
 
   return {
-    qrCode, qrImage,
+    qrToken, qrImage,
   };
 };
 

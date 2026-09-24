@@ -1,15 +1,18 @@
 import transporter from "../config/mail.config.js";
+
 import verifyEmailTemplate from "../templates/verify-email.template.js";
+
 import resetPasswordTemplate from "../templates/reset-password.template.js";
+import passwordResetSuccessTemplate from "../templates/reset-password.template.js";
 
 const sendVerificationEmail = async ({
   name,
   email,
-  verificationUrl,
+  verificationCode,
 }) => {
   const html = verifyEmailTemplate({
     name,
-    verificationUrl,
+    verificationCode,
   });
 
   await transporter.sendMail({
@@ -38,7 +41,21 @@ const sendPasswordResetEmail = async ({
   });
 };
 
+const passwordResetSuccessfulEmail = async ({ name, email }) => {
+  const html = passwordResetSuccessTemplate({
+    name,
+  });
+
+  await transporter.sendMail({
+    from: process.env.MAIL_FROM,
+    to: email,
+    subject: "Password Reset Successful | ParkSphere",
+    html,
+  });
+};
 
 export {
-  sendVerificationEmail, sendPasswordResetEmail
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+  passwordResetSuccessfulEmail
 };
