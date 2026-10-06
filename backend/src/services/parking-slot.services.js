@@ -29,21 +29,17 @@ const createParkingSlot = async ({
   });
 
   if (existingSlot) {
-    throw new ApiError(
-      409,
-      "Parking slot already exists on this floor",
-    );
+    throw new ApiError(409, "Parking slot already exists on this floor");
   }
 
-  const createdParkingSlot =
-    await prisma.parkingSlot.create({
-      data: {
-        lotId,
-        floorNumber,
-        slotNumber,
-        slotType,
-      },
-    });
+  const createdParkingSlot = await prisma.parkingSlot.create({
+    data: {
+      lotId,
+      floorNumber,
+      slotNumber,
+      slotType,
+    },
+  });
 
   return createdParkingSlot;
 };
@@ -61,10 +57,7 @@ const getParkingSlots = async (filters) => {
     });
 
     if (!parkingLot) {
-      throw new ApiError(
-        404,
-        "Parking lot not found",
-      );
+      throw new ApiError(404, "Parking lot not found");
     }
 
     where.lotId = filters.lotId;
@@ -79,23 +72,29 @@ const getParkingSlots = async (filters) => {
   }
 
   if (filters.floorNumber) {
-    where.floorNumber = Number(
-      filters.floorNumber,
-    );
+    where.floorNumber = Number(filters.floorNumber);
   }
 
-  const parkingSlots =
-    await prisma.parkingSlot.findMany({
-      where,
-      orderBy: [
-        {
-          floorNumber: "asc",
+  const parkingSlots = await prisma.parkingSlot.findMany({
+    where,
+    include: {
+      lot: {
+        select: {
+          id: true,
+          name: true,
+          city: true,
         },
-        {
-          slotNumber: "asc",
-        },
-      ],
-    });
+      },
+    },
+    orderBy: [
+      {
+        floorNumber: "asc",
+      },
+      {
+        slotNumber: "asc",
+      },
+    ],
+  });
 
   return parkingSlots;
 };
@@ -107,15 +106,18 @@ const getParkingSlotById = async (slotId) => {
       deletedAt: null,
     },
     include: {
-      lot: true,
+      lot: {
+        select: {
+          id: true,
+          city: true,
+          name: true,
+        },
+      },
     },
   });
 
   if (!parkingSlot) {
-    throw new ApiError(
-      404,
-      "Parking slot not found",
-    );
+    throw new ApiError(404, "Parking slot not found");
   }
 
   return parkingSlot;
@@ -123,48 +125,32 @@ const getParkingSlotById = async (slotId) => {
 
 const updateParkingSlot = async (
   slotId,
-  {
-    floorNumber,
-    slotNumber,
-    slotType,
-  },
+  { floorNumber, slotNumber, slotType },
 ) => {
-  const existingParkingSlot =
-    await prisma.parkingSlot.findFirst({
-      where: {
-        id: slotId,
-        deletedAt: null,
-      },
-    });
+  const existingParkingSlot = await prisma.parkingSlot.findFirst({
+    where: {
+      id: slotId,
+      deletedAt: null,
+    },
+  });
 
   if (!existingParkingSlot) {
-    throw new ApiError(
-      404,
-      "Parking slot not found",
-    );
+    throw new ApiError(404, "Parking slot not found");
   }
 
   // Check duplicate slot if floor or slot number changes
-  if (
-    floorNumber !== undefined ||
-    slotNumber !== undefined
-  ) {
-    const duplicateSlot =
-      await prisma.parkingSlot.findFirst({
-        where: {
-          lotId: existingParkingSlot.lotId,
-          floorNumber:
-            floorNumber ??
-            existingParkingSlot.floorNumber,
-          slotNumber:
-            slotNumber ??
-            existingParkingSlot.slotNumber,
-          id: {
-            not: slotId,
-          },
-          deletedAt: null,
+  if (floorNumber !== undefined || slotNumber !== undefined) {
+    const duplicateSlot = await prisma.parkingSlot.findFirst({
+      where: {
+        lotId: existingParkingSlot.lotId,
+        floorNumber: floorNumber ?? existingParkingSlot.floorNumber,
+        slotNumber: slotNumber ?? existingParkingSlot.slotNumber,
+        id: {
+          not: slotId,
         },
-      });
+        deletedAt: null,
+      },
+    });
 
     if (duplicateSlot) {
       throw new ApiError(
@@ -174,23 +160,22 @@ const updateParkingSlot = async (
     }
   }
 
-  const updatedParkingSlot =
-    await prisma.parkingSlot.update({
-      where: {
-        id: slotId,
-      },
-      data: {
-        ...(floorNumber !== undefined && {
-          floorNumber,
-        }),
-        ...(slotNumber && {
-          slotNumber,
-        }),
-        ...(slotType && {
-          slotType,
-        }),
-      },
-    });
+  const updatedParkingSlot = await prisma.parkingSlot.update({
+    where: {
+      id: slotId,
+    },
+    data: {
+      ...(floorNumber !== undefined && {
+        floorNumber,
+      }),
+      ...(slotNumber && {
+        slotNumber,
+      }),
+      ...(slotType && {
+        slotType,
+      }),
+    },
+  });
 
   return updatedParkingSlot;
 };
@@ -219,27 +204,35 @@ const updateParkingSlotStatus = async (slotId, status) => {
   return updatedParkingSlot;
 };
 
-const deleteParkingSlot = async(slotId)=>{
+const deleteParkingSlot = async (slotId) => {
   const existingSlot = await prisma.parkingSlot.findFirst({
-    where:{
+    where: {
       id: slotId,
       deletedAt: null,
     },
   });
-  
-  if(!existingSlot){
-    throw new ApiError(404, "Parking slot not found")
+
+  if (!existingSlot) {
+    throw new ApiError(404, "Parking Slot not found");
   }
-  const deletedSlot= await prisma.parkingSlot.update({
+
+  const deleteSlot = await prisma.parkingSlot.update({
     where: {
       id: slotId,
     },
     data: {
       deletedAt: new Date(),
     },
-  })
-  return deletedSlot
+  });
+
+  return deleteSlot;
 };
 
-export { createParkingSlot, getParkingSlots, getParkingSlotById, updateParkingSlot, 
-  updateParkingSlotStatus, deleteParkingSlot};
+export {
+  createParkingSlot,
+  getParkingSlots,
+  getParkingSlotById,
+  updateParkingSlot,
+  updateParkingSlotStatus,
+  deleteParkingSlot,
+};

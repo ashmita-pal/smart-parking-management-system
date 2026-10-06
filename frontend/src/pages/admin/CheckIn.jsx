@@ -103,12 +103,9 @@ const CheckIn = () => {
           }
 
           try {
-            const response = await api.post(
-              "/bookings/check-in",
-              {
-                qrToken: decodedText,
-              },
-            );
+            const response = await api.post("/bookings/check-in", {
+              qrToken: decodedText,
+            });
 
             if (!mountedRef.current) {
               return;
@@ -116,17 +113,14 @@ const CheckIn = () => {
 
             setBooking(response.data.data);
 
-            setSuccess(
-              "Vehicle checked in successfully",
-            );
+            setSuccess("Vehicle checked in successfully");
           } catch (error) {
             if (!mountedRef.current) {
               return;
             }
 
             setError(
-              error.response?.data?.message ||
-                "Unable to check in vehicle",
+              error.response?.data?.message || "Unable to check in vehicle",
             );
 
             scanningRef.current = true;
@@ -153,8 +147,7 @@ const CheckIn = () => {
       setCameraLoading(false);
 
       setError(
-        error.message ||
-          "Unable to open camera. Please allow camera access.",
+        error.message || "Unable to open camera. Please allow camera access.",
       );
     }
   };
@@ -186,42 +179,28 @@ const CheckIn = () => {
 
   return (
     <div className="min-h-full bg-[#050b14] px-6 py-10 text-white">
-
       <div className="mx-auto max-w-5xl">
-
         {/* ================= HEADER ================= */}
 
         <div className="mb-8 text-center">
-
           {/* QR Icon */}
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-cyan-500/40 bg-cyan-500/10 shadow-[0_0_30px_rgba(6,182,212,0.15)]">
-
-            <span className="text-2xl font-semibold text-cyan-400">
-              QR
-            </span>
-
+            <span className="text-2xl font-semibold text-cyan-400">QR</span>
           </div>
 
           <h1 className="text-4xl font-bold tracking-tight">
-            Parking{" "}
-            <span className="text-cyan-400">
-              Check-In
-            </span>
+            Parking <span className="text-cyan-400">Check-In</span>
           </h1>
 
           <p className="mt-3 text-gray-400">
-            Scan the customer's parking QR code to allow
-            entry.
+            Scan the customer's parking QR code to allow entry.
           </p>
-
         </div>
-
 
         {/* ================= MAIN CARD ================= */}
 
         {!booking && (
           <div className="mx-auto max-w-3xl rounded-2xl border border-slate-800 bg-[#080f1c] p-8 shadow-[0_0_40px_rgba(0,0,0,0.25)]">
-
             {/* Card Heading */}
 
             <h2 className="text-center text-2xl font-bold">
@@ -229,44 +208,32 @@ const CheckIn = () => {
             </h2>
 
             <p className="mt-2 text-center text-gray-400">
-              Point the camera at the QR code shown by the
-              customer.
+              Point the camera at the QR code shown by the customer.
             </p>
-
 
             {/* ================= CAMERA BOX ================= */}
 
             <div className="mt-7 flex justify-center">
-
-              <div className="relative h-[320px] w-[320px] overflow-hidden rounded-2xl border border-cyan-500/50 bg-black shadow-[0_0_30px_rgba(6,182,212,0.12)]">
-
+              <div className="relative h-80 w-[320px] overflow-hidden rounded-2xl border border-cyan-500/50 bg-black shadow-[0_0_30px_rgba(6,182,212,0.12)]">
                 {/* Scanner */}
 
-                <div
-                  id="qr-reader"
-                  className="h-full w-full"
-                ></div>
-
+                <div id="qr-reader" className="h-full w-full"></div>
 
                 {/* Corner Brackets */}
 
-                <div className="pointer-events-none absolute left-4 top-4 h-10 w-10 border-l-4 border-t-4 border-cyan-400 rounded-tl-lg"></div>
+                <div className="pointer-events-none absolute left-4 top-4 h-10 w-10 rounded-tl-lg border-l-4 border-t-4 border-cyan-400"></div>
 
-                <div className="pointer-events-none absolute right-4 top-4 h-10 w-10 border-r-4 border-t-4 border-cyan-400 rounded-tr-lg"></div>
+                <div className="pointer-events-none absolute right-4 top-4 h-10 w-10 rounded-tr-lg border-r-4 border-t-4 border-cyan-400"></div>
 
-                <div className="pointer-events-none absolute bottom-4 left-4 h-10 w-10 border-b-4 border-l-4 border-cyan-400 rounded-bl-lg"></div>
+                <div className="pointer-events-none absolute bottom-4 left-4 h-10 w-10 rounded-bl-lg border-b-4 border-l-4 border-cyan-400"></div>
 
-                <div className="pointer-events-none absolute bottom-4 right-4 h-10 w-10 border-b-4 border-r-4 border-cyan-400 rounded-br-lg"></div>
-
+                <div className="pointer-events-none absolute bottom-4 right-4 h-10 w-10 rounded-br-lg border-b-4 border-r-4 border-cyan-400"></div>
 
                 {/* Scan Line */}
 
-                <div className="pointer-events-none absolute left-8 right-8 top-1/2 h-[2px] bg-cyan-400/70 shadow-[0_0_10px_rgba(34,211,238,0.8)]"></div>
-
+                <div className="pointer-events-none absolute left-8 right-8 top-1/2 h-0.5 bg-cyan-400/70 shadow-[0_0_10px_rgba(34,211,238,0.8)]"></div>
               </div>
-
             </div>
-
 
             {/* Loading */}
 
@@ -276,7 +243,6 @@ const CheckIn = () => {
               </p>
             )}
 
-
             {/* Error */}
 
             {error && (
@@ -285,116 +251,85 @@ const CheckIn = () => {
               </div>
             )}
 
-
             {/* Instruction */}
 
             {!cameraLoading && !error && (
               <p className="mt-5 text-center text-sm text-gray-500">
-                Position the customer's QR code inside the
-                frame.
+                Position the customer's QR code inside the frame.
               </p>
             )}
-
           </div>
         )}
-
 
         {/* ================= SUCCESS CARD ================= */}
 
         {booking && (
           <div className="mx-auto max-w-3xl rounded-2xl border border-slate-800 bg-[#080f1c] p-8">
-
             {/* Success Icon */}
 
             <div className="mb-7 text-center">
-
               <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-500/10 text-3xl text-green-400">
                 ✓
               </div>
 
-              <h2 className="text-2xl font-bold text-green-400">
-                {success}
-              </h2>
+              <h2 className="text-2xl font-bold text-green-400">{success}</h2>
 
               <p className="mt-2 text-gray-400">
-                The vehicle is now allowed to enter the
-                parking lot.
+                The vehicle is now allowed to enter the parking lot.
               </p>
-
             </div>
-
 
             {/* Booking Details */}
 
             <div className="grid gap-4 sm:grid-cols-2">
-
               <div className="rounded-xl bg-[#0d1625] p-4">
-                <p className="text-sm text-gray-500">
-                  Booking Reference
-                </p>
+                <p className="text-sm text-gray-500">Booking Reference</p>
 
                 <p className="mt-1 font-semibold">
                   {booking.bookingReference || "N/A"}
                 </p>
               </div>
 
-
               <div className="rounded-xl bg-[#0d1625] p-4">
-                <p className="text-sm text-gray-500">
-                  Booking Status
-                </p>
+                <p className="text-sm text-gray-500">Booking Status</p>
 
                 <p className="mt-1 font-semibold text-green-400">
                   {booking.bookingStatus}
                 </p>
               </div>
 
-
               <div className="rounded-xl bg-[#0d1625] p-4">
-                <p className="text-sm text-gray-500">
-                  Vehicle Number
-                </p>
+                <p className="text-sm text-gray-500">Vehicle Number</p>
 
                 <p className="mt-1 font-semibold">
                   {booking.vehicle?.vehicleNumber || "N/A"}
                 </p>
               </div>
 
-
               <div className="rounded-xl bg-[#0d1625] p-4">
-                <p className="text-sm text-gray-500">
-                  Vehicle Type
-                </p>
+                <p className="text-sm text-gray-500">Vehicle Type</p>
 
                 <p className="mt-1 font-semibold">
                   {booking.vehicle?.vehicleType || "N/A"}
                 </p>
               </div>
 
-
               <div className="rounded-xl bg-[#0d1625] p-4">
-                <p className="text-sm text-gray-500">
-                  Parking Slot
-                </p>
+                <p className="text-sm text-gray-500">Parking Slot</p>
 
                 <p className="mt-1 font-semibold">
                   {booking.slot?.slotNumber || "N/A"}
                 </p>
               </div>
 
-
               <div className="rounded-xl bg-[#0d1625] p-4">
-                <p className="text-sm text-gray-500">
-                  Floor
-                </p>
+                <p className="text-sm text-gray-500">Floor</p>
 
                 <p className="mt-1 font-semibold">
                   {booking.slot?.floorNumber || "N/A"}
                 </p>
               </div>
-
             </div>
-
 
             {/* Scan Another */}
 
@@ -404,26 +339,20 @@ const CheckIn = () => {
             >
               Scan Another QR
             </button>
-
           </div>
         )}
-
 
         {/* Back */}
 
         <div className="mt-6 text-center">
-
           <Link
             to="/admin"
             className="text-sm text-gray-400 transition hover:text-cyan-400"
           >
             ← Back to Dashboard
           </Link>
-
         </div>
-
       </div>
-
     </div>
   );
 };

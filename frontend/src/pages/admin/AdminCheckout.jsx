@@ -106,20 +106,9 @@ function AdminCheckOut() {
       setCheckoutError("");
       setCheckoutResult(null);
 
-      /*
-       * The QR contains the booking's qrToken.
-       *
-       * We first send the token to the backend.
-       * The backend will identify the booking and
-       * process checkout.
-       */
-
-      const response = await api.post(
-        "/bookings/check-out",
-        {
-          qrToken,
-        },
-      );
+      const response = await api.post("/bookings/check-out", {
+        qrToken,
+      });
 
       console.log("Checkout response:", response.data);
 
@@ -131,8 +120,7 @@ function AdminCheckOut() {
 
       if (mountedRef.current) {
         setCheckoutError(
-          error.response?.data?.message ||
-            "Unable to process checkout.",
+          error.response?.data?.message || "Unable to process checkout.",
         );
       }
     } finally {
@@ -162,9 +150,11 @@ function AdminCheckOut() {
     });
   }
 
+  const isOverstay =
+    checkoutResult?.bookingStatus === "OVERSTAY_PAYMENT_PENDING";
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#070B14] px-4 py-10 font-sans text-white sm:px-6 lg:px-8">
-
       {/* Background Grid */}
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-size-[40px_40px]" />
 
@@ -174,10 +164,8 @@ function AdminCheckOut() {
       <div className="pointer-events-none absolute -right-32 bottom-20 h-96 w-96 rounded-full bg-cyan-600/20 blur-3xl" />
 
       <div className="relative z-10 mx-auto max-w-4xl">
-
         {/* Header */}
         <div className="mb-8 text-center">
-
           <h1 className="text-3xl font-bold tracking-tight text-white">
             Parking Check-Out
           </h1>
@@ -185,26 +173,18 @@ function AdminCheckOut() {
           <p className="mt-2 text-gray-400">
             Scan the customer's QR code at the exit gate
           </p>
-
         </div>
 
         {/* Scanner */}
         {!checkoutResult && (
           <section className="rounded-2xl border border-gray-800/80 bg-[#0a0f1c]/90 p-6 shadow-2xl backdrop-blur-md">
-
             <div className="flex flex-col items-center">
-
-              <div className="relative h-[320px] w-[320px] overflow-hidden rounded-2xl border border-cyan-500/30 bg-black shadow-[0_0_35px_rgba(6,182,212,0.15)]">
-
+              <div className="relative h-80 w-[320px] overflow-hidden rounded-2xl border border-cyan-500/30 bg-black shadow-[0_0_35px_rgba(6,182,212,0.15)]">
                 {/* QR Scanner */}
-                <div
-                  id="checkout-qr-reader"
-                  className="h-full w-full"
-                />
+                <div id="checkout-qr-reader" className="h-full w-full" />
 
                 {/* Scanner Overlay */}
                 <div className="pointer-events-none absolute inset-0">
-
                   {/* Top Left */}
                   <div className="absolute left-8 top-8 h-10 w-10 border-l-2 border-t-2 border-cyan-400" />
 
@@ -219,15 +199,12 @@ function AdminCheckOut() {
 
                   {/* Scan Line */}
                   <div className="absolute left-10 right-10 top-1/2 h-px bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.8)]" />
-
                 </div>
-
               </div>
 
               <p className="mt-5 text-sm text-gray-400">
                 Position the customer's QR code inside the frame
               </p>
-
             </div>
 
             {/* Scanner Error */}
@@ -250,100 +227,99 @@ function AdminCheckOut() {
                 Processing checkout...
               </div>
             )}
-
           </section>
         )}
 
         {/* Checkout Result */}
         {checkoutResult && (
-          <section className="rounded-2xl border border-green-500/30 bg-[#0a0f1c]/90 p-8 shadow-2xl">
-
+          <section
+            className={`rounded-2xl border bg-[#0a0f1c]/90 p-8 shadow-2xl ${
+              isOverstay
+                ? "border-yellow-500/30"
+                : "border-green-500/30"
+            }`}
+          >
             <div className="text-center">
-
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-green-500/30 bg-green-500/10">
-
-                <span className="text-3xl text-green-400">
-                  ✓
+              <div
+                className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full border ${
+                  isOverstay
+                    ? "border-yellow-500/30 bg-yellow-500/10"
+                    : "border-green-500/30 bg-green-500/10"
+                }`}
+              >
+                <span
+                  className={`text-3xl ${
+                    isOverstay ? "text-yellow-400" : "text-green-400"
+                  }`}
+                >
+                  {isOverstay ? "!" : "✓"}
                 </span>
-
               </div>
 
-              <h2 className="mt-5 text-2xl font-bold text-green-400">
-                Checkout Successful
+              <h2
+                className={`mt-5 text-2xl font-bold ${
+                  isOverstay ? "text-yellow-400" : "text-green-400"
+                }`}
+              >
+                {isOverstay
+                  ? "Overstay Payment Required"
+                  : "Checkout Successful"}
               </h2>
 
               <p className="mt-2 text-gray-400">
-                Vehicle has been successfully checked out.
+                {isOverstay
+                  ? "The vehicle has an outstanding overstay charge."
+                  : "Vehicle has been successfully checked out."}
               </p>
-
             </div>
 
             {/* Booking Information */}
             <div className="mt-8 space-y-4">
-
               <div className="flex items-center justify-between border-b border-gray-800 pb-4">
-
-                <span className="text-gray-500">
-                  Booking Reference
-                </span>
+                <span className="text-gray-500">Booking Reference</span>
 
                 <span className="font-semibold text-cyan-400">
                   {checkoutResult.bookingReference}
                 </span>
-
               </div>
 
               <div className="flex items-center justify-between border-b border-gray-800 pb-4">
+                <span className="text-gray-500">Status</span>
 
-                <span className="text-gray-500">
-                  Status
+                <span
+                  className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                    isOverstay
+                      ? "border-yellow-500/20 bg-yellow-500/10 text-yellow-400"
+                      : "border-green-500/20 bg-green-500/10 text-green-400"
+                  }`}
+                >
+                  {checkoutResult.bookingStatus?.replaceAll("_", " ")}
                 </span>
-
-                <span className="rounded-full border border-green-500/20 bg-green-500/10 px-3 py-1 text-xs font-medium text-green-400">
-                  {checkoutResult.bookingStatus?.replaceAll(
-                    "_",
-                    " ",
-                  )}
-                </span>
-
               </div>
 
               <div className="flex items-center justify-between border-b border-gray-800 pb-4">
-
-                <span className="text-gray-500">
-                  Exit Time
-                </span>
+                <span className="text-gray-500">Exit Time</span>
 
                 <span className="font-medium text-gray-200">
                   {formatTime(checkoutResult.exitTime)}
                 </span>
-
               </div>
 
               <div className="flex items-center justify-between border-b border-gray-800 pb-4">
-
-                <span className="text-gray-500">
-                  Overstay
-                </span>
+                <span className="text-gray-500">Overstay</span>
 
                 <span className="font-medium text-gray-200">
                   {checkoutResult.overstayMinutes} minutes
                 </span>
-
               </div>
 
               <div className="flex items-center justify-between">
-
-                <span className="text-gray-500">
-                  Overstay Amount
-                </span>
+                <span className="text-gray-500">Overstay Amount</span>
 
                 <span className="font-bold text-cyan-400">
                   ₹{Number(checkoutResult.overstayAmount)}
                 </span>
-
               </div>
-
             </div>
 
             {/* Scan Another */}
@@ -354,10 +330,8 @@ function AdminCheckOut() {
             >
               SCAN ANOTHER VEHICLE
             </button>
-
           </section>
         )}
-
       </div>
     </div>
   );

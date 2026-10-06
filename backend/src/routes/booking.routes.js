@@ -2,9 +2,10 @@ import { Router } from "express";
 
 import { verifyJWT } from "../middleware/auth.middleware.js";
 
+
 import {
   createBookingController, getBookingsController, getBookingByIdController, 
-  cancelBookingController, checkInController, checkOutController, gateStatusController,
+  cancelBookingController, checkInController, checkOutController
 
 } from "../controllers/booking.controller.js";
 
@@ -29,6 +30,5 @@ router.post("/check-in", verifyJWT, checkInController);
 
 router.post("/check-out", verifyJWT, checkOutController);
 
-router.get("/:bookingId/gate-status", verifyJWT, gateStatusController);
 
 export default router;

@@ -1,63 +1,87 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import api from "../../api/api";
 
 function AdminDashboard() {
+  const [dashboard, setDashboard] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const fetchDashboard = async () => {
+      try {
+        setLoading(true);
+        setError("");
+
+        const response = await api.get("/dashboard/summary");
+
+        setDashboard(response.data.data);
+      } catch (error) {
+        console.error("Failed to fetch dashboard:", error);
+
+        setError(
+          error.response?.data?.message ||
+            "Failed to load dashboard data.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboard();
+  }, []);
+
+  const totalSlots = dashboard?.parking?.totalSlots ?? 0;
+  const occupiedSlots = dashboard?.parking?.occupiedSlots ?? 0;
+  const availableSlots = dashboard?.parking?.availableSlots ?? 0;
+
+  const occupancyPercentage =
+    totalSlots > 0
+      ? Math.round((occupiedSlots / totalSlots) * 100)
+      : 0;
+
   const stats = [
     {
       title: "Total Parking Lots",
-      value: "8",
+      value: dashboard?.parking?.totalLots ?? 0,
       detail: "Across all locations",
     },
     {
       title: "Total Parking Slots",
-      value: "186",
+      value: totalSlots,
       detail: "Registered parking slots",
     },
     {
       title: "Active Bookings",
-      value: "42",
+      value: dashboard?.bookings?.active ?? 0,
       detail: "Currently active",
     },
     {
       title: "Today's Revenue",
-      value: "₹12,480",
+      value: `₹${(dashboard?.revenue?.today ?? 0).toLocaleString("en-IN")}`,
       detail: "From parking payments",
     },
   ];
 
-  const recentBookings = [
-    {
-      id: "BK001",
-      user: "Soumyadeep Paul",
-      parkingLot: "City Center Parking",
-      slot: "A1",
-      date: "04 Sep 2026",
-      status: "Active",
-    },
-    {
-      id: "BK002",
-      user: "Rahul Sharma",
-      parkingLot: "Salt Lake Parking",
-      slot: "B4",
-      date: "04 Sep 2026",
-      status: "Confirmed",
-    },
-    {
-      id: "BK003",
-      user: "Ananya Das",
-      parkingLot: "Park Street Parking",
-      slot: "C2",
-      date: "03 Sep 2026",
-      status: "Completed",
-    },
-    {
-      id: "BK004",
-      user: "Arjun Roy",
-      parkingLot: "City Center Parking",
-      slot: "A5",
-      date: "03 Sep 2026",
-      status: "Cancelled",
-    },
-  ];
+  const formatStatus = (status) => {
+    if (!status) return "";
+
+    return status
+      .toLowerCase()
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+  };
+
+  const formatDate = (date) => {
+    if (!date) return "";
+
+    return new Date(date).toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  };
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#070B14] px-4 py-8 font-sans text-white sm:px-6 lg:px-8">
@@ -100,6 +124,22 @@ function AdminDashboard() {
           </div>
         </section>
 
+        {/* Loading */}
+        {loading && (
+          <section className="rounded-2xl border border-gray-800/80 bg-[#0a0f1c]/90 p-6 shadow-2xl backdrop-blur-md">
+            <p className="text-sm text-gray-400">
+              Loading dashboard data...
+            </p>
+          </section>
+        )}
+
+        {/* Error */}
+        {error && (
+          <section className="rounded-2xl border border-red-500/20 bg-red-500/5 p-6 shadow-2xl backdrop-blur-md">
+            <p className="text-sm text-red-400">{error}</p>
+          </section>
+        )}
+
         {/* Statistics */}
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {stats.map((stat) => (
@@ -132,28 +172,37 @@ function AdminDashboard() {
             </div>
 
             <span className="w-fit rounded-full border border-cyan-500/20 bg-cyan-500/5 px-3 py-1 text-xs font-medium text-cyan-400">
-              68% Occupied
+              {occupancyPercentage}% Occupied
             </span>
           </div>
 
           <div className="mt-6">
             <div className="h-3 overflow-hidden rounded-full bg-gray-800">
-              <div className="h-full w-[68%] rounded-full bg-linear-to-r from-cyan-500 to-blue-600" />
+              <div
+                className="h-full rounded-full bg-linear-to-r from-cyan-500 to-blue-600"
+                style={{ width: `${occupancyPercentage}%` }}
+              />
             </div>
 
             <div className="mt-4 grid grid-cols-3 gap-4">
               <div>
-                <p className="text-2xl font-bold text-white">126</p>
+                <p className="text-2xl font-bold text-white">
+                  {occupiedSlots}
+                </p>
                 <p className="mt-1 text-xs text-gray-500">Occupied</p>
               </div>
 
               <div>
-                <p className="text-2xl font-bold text-cyan-400">60</p>
+                <p className="text-2xl font-bold text-cyan-400">
+                  {availableSlots}
+                </p>
                 <p className="mt-1 text-xs text-gray-500">Available</p>
               </div>
 
               <div>
-                <p className="text-2xl font-bold text-gray-300">186</p>
+                <p className="text-2xl font-bold text-gray-300">
+                  {totalSlots}
+                </p>
                 <p className="mt-1 text-xs text-gray-500">Total Slots</p>
               </div>
             </div>
@@ -196,56 +245,69 @@ function AdminDashboard() {
                 </thead>
 
                 <tbody>
-                  {recentBookings.map((booking) => {
-                    let statusClass =
-                      "border-blue-500/20 bg-blue-500/10 text-blue-400";
+                  {dashboard?.recentBookings?.length > 0 ? (
+                    dashboard.recentBookings.map((booking) => {
+                      let statusClass =
+                        "border-blue-500/20 bg-blue-500/10 text-blue-400";
 
-                    if (booking.status === "Active") {
-                      statusClass =
-                        "border-cyan-500/20 bg-cyan-500/10 text-cyan-400";
-                    }
+                      if (booking.bookingStatus === "ACTIVE") {
+                        statusClass =
+                          "border-cyan-500/20 bg-cyan-500/10 text-cyan-400";
+                      }
 
-                    if (booking.status === "Completed") {
-                      statusClass =
-                        "border-green-500/20 bg-green-500/10 text-green-400";
-                    }
+                      if (booking.bookingStatus === "COMPLETED") {
+                        statusClass =
+                          "border-green-500/20 bg-green-500/10 text-green-400";
+                      }
 
-                    if (booking.status === "Cancelled") {
-                      statusClass =
-                        "border-red-500/20 bg-red-500/10 text-red-400";
-                    }
+                      if (booking.bookingStatus === "CANCELLED") {
+                        statusClass =
+                          "border-red-500/20 bg-red-500/10 text-red-400";
+                      }
 
-                    return (
-                      <tr
-                        key={booking.id}
-                        className="border-b border-gray-800/70 last:border-b-0 transition-colors hover:bg-white/2"
+                      return (
+                        <tr
+                          key={booking.id}
+                          className="border-b border-gray-800/70 last:border-b-0 transition-colors hover:bg-white/2"
+                        >
+                          <td className="px-4 py-4 font-medium text-cyan-400">
+                            {booking.bookingReference}
+                          </td>
+
+                          <td className="px-4 py-4 text-gray-300">
+                            {booking.user?.name || "N/A"}
+                          </td>
+
+                          <td className="px-4 py-4 text-gray-400">
+                            {booking.lot?.name || "N/A"}
+                          </td>
+
+                          <td className="px-4 py-4 font-medium text-gray-300">
+                            {booking.slot
+                              ? `Floor ${booking.slot.floorNumber} - ${booking.slot.slotNumber}`
+                              : "N/A"}
+                          </td>
+
+                          <td className="px-4 py-4">
+                            <span
+                              className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${statusClass}`}
+                            >
+                              {formatStatus(booking.bookingStatus)}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td
+                        colSpan="5"
+                        className="px-4 py-8 text-center text-sm text-gray-500"
                       >
-                        <td className="px-4 py-4 font-medium text-cyan-400">
-                          {booking.id}
-                        </td>
-
-                        <td className="px-4 py-4 text-gray-300">
-                          {booking.user}
-                        </td>
-
-                        <td className="px-4 py-4 text-gray-400">
-                          {booking.parkingLot}
-                        </td>
-
-                        <td className="px-4 py-4 font-medium text-gray-300">
-                          {booking.slot}
-                        </td>
-
-                        <td className="px-4 py-4">
-                          <span
-                            className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${statusClass}`}
-                          >
-                            {booking.status}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                        No recent bookings found.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -307,7 +369,9 @@ function AdminDashboard() {
         <section className="rounded-2xl border border-gray-800/80 bg-[#0a0f1c]/90 p-6 shadow-2xl backdrop-blur-md sm:p-8">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-bold text-white">Revenue Snapshot</h2>
+              <h2 className="text-xl font-bold text-white">
+                Revenue Snapshot
+              </h2>
 
               <p className="mt-1 text-sm text-gray-500">
                 Today's parking revenue
@@ -325,28 +389,34 @@ function AdminDashboard() {
           <div className="mt-6 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
             <div>
               <p className="text-4xl font-bold tracking-tight text-white">
-                ₹12,480
+                ₹{(dashboard?.revenue?.today ?? 0).toLocaleString("en-IN")}
               </p>
 
-              <p className="mt-2 text-sm text-green-400">
-                +12.5% compared to yesterday
+              <p className="mt-2 text-sm text-gray-500">
+                Today's successful parking payments
               </p>
             </div>
 
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
               <div className="rounded-xl border border-gray-800 bg-[#070B14] px-5 py-4">
                 <p className="text-xs text-gray-500">Bookings</p>
-                <p className="mt-1 text-lg font-bold text-gray-200">38</p>
+                <p className="mt-1 text-lg font-bold text-gray-200">
+                  {dashboard?.bookings?.confirmed ?? 0}
+                </p>
               </div>
 
               <div className="rounded-xl border border-gray-800 bg-[#070B14] px-5 py-4">
                 <p className="text-xs text-gray-500">Overstay</p>
-                <p className="mt-1 text-lg font-bold text-orange-400">₹620</p>
+                <p className="mt-1 text-lg font-bold text-orange-400">
+                  {dashboard?.bookings?.overstayPaymentPending ?? 0}
+                </p>
               </div>
 
               <div className="rounded-xl border border-gray-800 bg-[#070B14] px-5 py-4">
-                <p className="text-xs text-gray-500">Avg. Booking</p>
-                <p className="mt-1 text-lg font-bold text-cyan-400">₹312</p>
+                <p className="text-xs text-gray-500">Total Revenue</p>
+                <p className="mt-1 text-lg font-bold text-cyan-400">
+                  ₹{(dashboard?.revenue?.total ?? 0).toLocaleString("en-IN")}
+                </p>
               </div>
             </div>
           </div>

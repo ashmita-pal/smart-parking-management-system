@@ -85,11 +85,35 @@ function BookingDetails() {
       return "Pending";
     }
 
-    const successfulPayment = booking.payments.find(
+    const successfulPayments = booking.payments.filter(
       (payment) => payment.paymentStatus === "SUCCESS",
     );
 
-    return successfulPayment ? "Paid" : "Pending";
+    if (successfulPayments.length === booking.payments.length) {
+      return "Paid";
+    }
+
+    return "Pending";
+  }
+
+  function getPaymentLabel(paymentType) {
+    if (paymentType === "BOOKING") {
+      return "Booking Payment";
+    }
+
+    if (paymentType === "OVERSTAY") {
+      return "Overstay Payment";
+    }
+
+    return "Payment";
+  }
+
+  function getTotalPaid() {
+    return (
+      booking?.payments
+        ?.filter((payment) => payment.paymentStatus === "SUCCESS")
+        .reduce((total, payment) => total + Number(payment.amount), 0) || 0
+    );
   }
 
   function getStatusClasses(status) {
@@ -150,6 +174,9 @@ function BookingDetails() {
   }
 
   const paymentStatus = getPaymentStatus();
+
+  const isOverstayPaymentPending =
+    booking.bookingStatus === "OVERSTAY_PAYMENT_PENDING";
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#070B14] px-4 py-10 font-sans text-white sm:px-6 lg:px-8">
@@ -311,13 +338,42 @@ function BookingDetails() {
           <h2 className="text-xl font-bold text-white">Payment Summary</h2>
 
           <div className="mt-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-gray-800 pb-4">
-              <span className="text-gray-500">Booking Amount</span>
+            {booking.payments?.map((payment) => (
+              <div
+                key={payment.id}
+                className="flex items-center justify-between border-b border-gray-800 pb-4"
+              >
+                <div>
+                  <p className="font-medium text-gray-200">
+                    {getPaymentLabel(payment.paymentType)}
+                  </p>
 
-              <span className="font-medium text-gray-200">
-                ₹{Number(booking.totalAmount)}
-              </span>
-            </div>
+                  <p
+                    className={`mt-1 text-xs ${
+                      payment.paymentStatus === "SUCCESS"
+                        ? "text-green-400"
+                        : "text-yellow-400"
+                    }`}
+                  >
+                    {payment.paymentStatus}
+                  </p>
+                </div>
+
+                <span className="font-medium text-gray-200">
+                  ₹{Number(payment.amount)}
+                </span>
+              </div>
+            ))}
+
+            {!booking.payments?.length && (
+              <div className="flex items-center justify-between border-b border-gray-800 pb-4">
+                <span className="text-gray-500">Booking Payment</span>
+
+                <span className="font-medium text-gray-200">
+                  ₹{Number(booking.totalAmount)}
+                </span>
+              </div>
+            )}
 
             <div className="flex items-center justify-between">
               <span className="text-gray-500">Payment Status</span>
@@ -335,12 +391,10 @@ function BookingDetails() {
 
             <div className="border-t border-gray-800 pt-5">
               <div className="flex items-center justify-between">
-                <span className="text-lg font-bold text-white">
-                  Total Amount
-                </span>
+                <span className="text-lg font-bold text-white">Total Paid</span>
 
                 <span className="text-2xl font-bold text-cyan-400">
-                  ₹{Number(booking.totalAmount)}
+                  ₹{getTotalPaid()}
                 </span>
               </div>
             </div>
@@ -349,8 +403,28 @@ function BookingDetails() {
 
         {/* Actions */}
         <section className="space-y-4">
-          {/* Payment / QR */}
-          {booking.bookingStatus === "PENDING_PAYMENT" ? (
+          {/* Overstay Payment */}
+          {isOverstayPaymentPending ? (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-4 text-center">
+                <p className="font-medium text-yellow-400">
+                  Overstay Payment Required
+                </p>
+
+                <p className="mt-1 text-sm text-gray-400">
+                  Please pay the outstanding overstay fee to complete your
+                  checkout.
+                </p>
+              </div>
+
+              <Link
+                to={`/payment/${booking.id}`}
+                className="block rounded-xl bg-linear-to-r from-yellow-500 to-orange-500 px-5 py-3 text-center font-semibold text-white shadow-[0_0_20px_rgba(234,179,8,0.25)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_0_35px_rgba(234,179,8,0.45)]"
+              >
+                PAY OVERSTAY FEE ₹{Number(booking.overstayAmount)}
+              </Link>
+            </div>
+          ) : booking.bookingStatus === "PENDING_PAYMENT" ? (
             <Link
               to={`/payment/${booking.id}`}
               className="block rounded-xl bg-linear-to-r from-cyan-500 to-blue-600 px-5 py-3 text-center font-semibold text-white shadow-[0_0_20px_rgba(6,182,212,0.25)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_0_35px_rgba(6,182,212,0.45)]"

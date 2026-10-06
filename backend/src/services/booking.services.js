@@ -73,6 +73,7 @@ const createBooking = async (
           isActive: true,
           deletedAt: true,
           pricePerHour: true,
+          gracePeriodMinutes: true,
         },
       },
     },
@@ -198,28 +199,58 @@ const createBooking = async (
       );
     }
 
-    // ----------------------------------------------
-    // TEMPORARILY RESERVE SLOT
-    // ----------------------------------------------
+  const previousBooking = await tx.booking.findFirst({
+  where: {
+    slotId,
+    bookingStatus: {
+      in: [
+        BOOKING_STATUS.PENDING_PAYMENT,
+        BOOKING_STATUS.CONFIRMED,
+        BOOKING_STATUS.ACTIVE,
+        BOOKING_STATUS.OVERSTAY_PAYMENT_PENDING,
+      ],
+    },
+    endTime: {
+      lte: requestedStart,
+    },
+  },
+  orderBy: {
+    endTime: "desc",
+  },
+  select: {
+    id: true,
+    endTime: true,
+  },
+});
 
-    const reservedSlot = await tx.parkingSlot.updateMany({
-      where: {
-        id: slotId,
-        status: SLOT_STATUS.AVAILABLE,
-        deletedAt: null,
-      },
+if (previousBooking) {
+  const earliestNextStart = new Date(
+    previousBooking.endTime.getTime() +
+      slot.lot.gracePeriodMinutes * 60 * 1000,
+  );
 
-      data: {
-        status: SLOT_STATUS.TEMP_RESERVED,
-      },
-    });
+  if (requestedStart < earliestNextStart) {
+    throw new ApiError(
+      409,
+      `Parking slot will be available after ${earliestNextStart.toLocaleString()}. Please choose a later start time.`,
+    );
+  }
+}
 
-    if (reservedSlot.count === 0) {
-      throw new ApiError(
-        409,
-        "Parking slot is no longer available. Please choose another slot.",
-      );
-    }
+  if (
+  slot.deletedAt ||
+  !slot.lot ||
+  !slot.lot.isActive
+) {
+  throw new ApiError(409, "Parking slot is not available for booking.");
+}
+
+if (slot.status === SLOT_STATUS.MAINTENANCE) {
+  throw new ApiError(
+    409,
+    "Parking slot is currently under maintenance.",
+  );
+}
 
     // ----------------------------------------------
     // CREATE BOOKING
@@ -293,7 +324,7 @@ const createBooking = async (
   return booking;
 };
 
-const getMyBookings = async (userId, filters) => {
+const getMyBookings = async (user, filters) => {
   let {
     page = 1,
     limit = 10,
@@ -321,8 +352,10 @@ const getMyBookings = async (userId, filters) => {
 
   const skip = (page - 1) * limit;
 
+  const isAdmin = user.role === "ADMIN";
+
   const where = buildBookingFilters({
-    userId,
+    userId: isAdmin ? undefined : user.id,
     search,
     lotId,
     from,
@@ -335,16 +368,24 @@ const getMyBookings = async (userId, filters) => {
     prisma.booking.count({
       where,
     }),
+
     prisma.booking.findMany({
       where,
       skip,
       take: limit,
-
       orderBy: {
         createdAt: sort === "asc" ? "asc" : "desc",
       },
 
       include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+
         vehicle: {
           select: {
             id: true,
@@ -373,7 +414,6 @@ const getMyBookings = async (userId, filters) => {
           orderBy: {
             createdAt: "desc",
           },
-
           select: {
             id: true,
             amount: true,
@@ -390,7 +430,6 @@ const getMyBookings = async (userId, filters) => {
 
   return {
     filteredRecords,
-
     pagination: {
       page,
       limit,
@@ -402,14 +441,29 @@ const getMyBookings = async (userId, filters) => {
   };
 };
 
-const getBookingById = async (userId, bookingId) => {
+const getBookingById = async (user, bookingId) => {
+  const isAdmin = user.role === "ADMIN";
+
   const booking = await prisma.booking.findFirst({
     where: {
       id: bookingId,
-      userId,
+
+      ...(isAdmin
+        ? {}
+        : {
+            userId: user.id,
+          }),
     },
 
     include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+
       vehicle: {
         select: {
           id: true,
@@ -549,7 +603,17 @@ const checkIn = async (qrToken) => {
       bookingStatus: true,
       entryTime: true,
       qrExpiresAt: true,
+      startTime: true,
       endTime: true,
+
+      slot: {
+        select: {
+          id: true,
+          lotId: true,
+          slotType: true,
+          status: true,
+        },
+      },
     },
   });
 
@@ -572,14 +636,123 @@ const checkIn = async (qrToken) => {
     throw new ApiError(409, "Vehicle Already Checked-In");
   }
 
-  const checkedInBooking = await prisma.$transaction(async (tx) => {
-    //Booking
+  // Check-in is allowed only after the booking start time
+  const currentTime = new Date();
 
+  if (currentTime < booking.startTime) {
+    throw new ApiError(
+      409,
+      "Check-in is not available yet. Please wait until your booking start time.",
+    );
+  }
+
+  const checkedInBooking = await prisma.$transaction(async (tx) => {
+    let assignedSlotId = booking.slotId;
+
+    /*
+     * CASE 1:
+     * Originally booked slot is AVAILABLE or RESERVED.
+     * Use the originally assigned slot.
+     */
+    if (
+      booking.slot.status === SLOT_STATUS.AVAILABLE ||
+      booking.slot.status === SLOT_STATUS.RESERVED
+    ) {
+      const updatedSlot = await tx.parkingSlot.updateMany({
+        where: {
+          id: booking.slotId,
+          status: {
+            in: [
+              SLOT_STATUS.AVAILABLE,
+              SLOT_STATUS.RESERVED,
+            ],
+          },
+        },
+        data: {
+          status: SLOT_STATUS.OCCUPIED,
+        },
+      });
+
+      if (updatedSlot.count === 0) {
+        throw new ApiError(
+          409,
+          "Parking Slot is no longer available. Please try again.",
+        );
+      }
+    } else if (booking.slot.status === SLOT_STATUS.OCCUPIED) {
+      /*
+       * CASE 2:
+       * Originally booked slot is OCCUPIED.
+       * Find another compatible available slot
+       * in the same parking lot.
+       */
+      const replacementSlot = await tx.parkingSlot.findFirst({
+        where: {
+          lotId: booking.slot.lotId,
+          slotType: booking.slot.slotType,
+          status: SLOT_STATUS.AVAILABLE,
+          deletedAt: null,
+          id: {
+            not: booking.slotId,
+          },
+        },
+        orderBy: {
+          slotNumber: "asc",
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!replacementSlot) {
+        throw new ApiError(
+          409,
+          "Your assigned parking slot is currently occupied and no compatible replacement slot is available.",
+        );
+      }
+
+      /*
+       * Atomically claim the replacement slot.
+       */
+      const updatedReplacementSlot = await tx.parkingSlot.updateMany({
+        where: {
+          id: replacementSlot.id,
+          status: SLOT_STATUS.AVAILABLE,
+        },
+        data: {
+          status: SLOT_STATUS.OCCUPIED,
+        },
+      });
+
+      if (updatedReplacementSlot.count === 0) {
+        throw new ApiError(
+          409,
+          "Replacement parking slot is no longer available. Please try again.",
+        );
+      }
+
+      assignedSlotId = replacementSlot.id;
+    } else {
+      /*
+       * Other states such as MAINTENANCE
+       * cannot be used for check-in.
+       */
+      throw new ApiError(
+        409,
+        "The assigned parking slot is not available for check-in.",
+      );
+    }
+
+    /*
+     * Update booking after the actual slot
+     * has been successfully assigned.
+     */
     const updatedBooking = await tx.booking.update({
       where: {
         id: booking.id,
       },
       data: {
+        slotId: assignedSlotId,
         bookingStatus: BOOKING_STATUS.ACTIVE,
         entryTime: new Date(),
       },
@@ -589,22 +762,9 @@ const checkIn = async (qrToken) => {
       },
     });
 
-    const updatedSlot = await tx.parkingSlot.updateMany({
-      where: {
-        id: booking.slotId,
-        status: SLOT_STATUS.RESERVED,
-      },
-      data: {
-        status: SLOT_STATUS.OCCUPIED,
-      },
-    });
-
-    if (updatedSlot.count === 0) {
-      throw new ApiError(409, "Parking Slot cannot be occupied");
-    }
-
     return updatedBooking;
   });
+
   return checkedInBooking;
 };
 
@@ -725,28 +885,5 @@ const checkOut = async (qrToken) => {
   };
 };
 
-const getGateStatus = async (userId, bookingId) => {
-  const booking = await prisma.booking.findFirst({
-    where: {
-      id: bookingId,
-      userId,
-    },
 
-    select: {
-      bookingStatus: true,
-      overstayAmount: true,
-    },
-  });
-
-  if (!booking) {
-    throw new ApiError(404, "Booking not found.");
-  }
-
-  return {
-    bookingStatus: booking.bookingStatus,
-    paymentRequired: hasOverstay,
-    amountDue: booking.overstayAmount,
-  };
-};
-
-export { createBooking, getMyBookings, getBookingById, cancelBooking, checkIn, checkOut, getGateStatus };
+export { createBooking, getMyBookings, getBookingById, cancelBooking, checkIn, checkOut };

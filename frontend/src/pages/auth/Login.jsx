@@ -42,8 +42,14 @@ function Login() {
 
       console.log("Login successful:", response.data);
 
+      if(response.data.data.role === "ADMIN"){
+        navigate("/admin");
+      } 
+    else{
       navigate("/dashboard");
-    } catch (error) {
+    }
+  }
+    catch (error) {
       console.error("Login failed:", error);
 
       const message =

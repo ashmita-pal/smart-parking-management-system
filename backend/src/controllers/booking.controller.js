@@ -8,8 +8,7 @@ import {
   getBookingById,
   cancelBooking,
   checkIn,
-  checkOut,
-  getGateStatus,
+  checkOut
 } from "../services/booking.services.js";
 
 const createBookingController = asyncHandler(async (req, res) => {
@@ -50,7 +49,7 @@ const createBookingController = asyncHandler(async (req, res) => {
 });
 
 const getBookingsController = asyncHandler(async (req, res) => {
-  const bookings = await getMyBookings(req.user.id, req.query);
+  const bookings = await getMyBookings(req.user, req.query);
 
   return res
     .status(200)
@@ -64,10 +63,9 @@ const getBookingsController = asyncHandler(async (req, res) => {
 });
 
 const getBookingByIdController = asyncHandler(async (req, res) => {
-  const userId = req.user.id;
   const { bookingId } = req.params;
 
-  const booking = await getBookingById(userId, bookingId);
+  const booking = await getBookingById(req.user, bookingId);
 
   return res
     .status(200)
@@ -134,25 +132,6 @@ const checkOutController = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, result, "Vehicle checked out successfully"));
 });
 
-const gateStatusController = asyncHandler(async (req, res) => {
-  const { bookingId } = req.params;
-
-  if (!bookingId?.trim()) {
-    throw new ApiError(400, "Booking ID is required");
-  }
-
-  const status = await getGateStatus(req.user.id, bookingId);
-
-  return res
-    .status(200)
-    .json(
-      new ApiResponse(
-        200,
-        status,
-        "Gate status fetched successfully",
-      ),
-    );
-});
 
 export {
   createBookingController,
@@ -161,5 +140,4 @@ export {
   cancelBookingController,
   checkInController,
   checkOutController,
-  gateStatusController,
 };
