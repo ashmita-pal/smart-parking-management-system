@@ -497,7 +497,7 @@ environment-variable system.
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/Soumya-0712/smart-parking-management-system.git
+git clone https://github.com/ashmita-pal/smart-parking-management-system.git
 cd smart-parking-management-system
 ```
 
@@ -763,7 +763,7 @@ The current focus is deployment and production configuration.
 
 ## 👥 Contributor
 
-- **Soumyadeep Paul**
+- **Ashmita Pal**
 
 ---
 
